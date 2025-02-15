@@ -2,7 +2,6 @@ import { SignedIn, SignedOut, useUser } from '@clerk/clerk-expo'
 import { useAuth } from '@clerk/clerk-expo'
 import { Link } from 'expo-router'
 import { Text, View, Button, StyleSheet } from 'react-native'
-import { Weight } from '../../src/components/Weight'
 
 export default function Page() {
   const { user } = useUser()
@@ -13,10 +12,14 @@ export default function Page() {
       <SignedIn>
         <View style={styles.content}>
           <Text style={styles.welcome}>
-            Hello {user?.emailAddresses[0].emailAddress}
+            Welcome to NorthStar Fitness
           </Text>
-          <Weight />
-          <Button title="Sign Out" onPress={() => signOut()} />
+          <Text style={styles.subtitle}>
+            Track your workouts and achieve your goals
+          </Text>
+          <View style={styles.buttonContainer}>
+            <Button title="Sign Out" onPress={() => signOut()} />
+          </View>
         </View>
       </SignedIn>
       <SignedOut>
@@ -36,6 +39,7 @@ export default function Page() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#fff',
   },
   content: {
     flex: 1,
@@ -43,9 +47,19 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   welcome: {
-    fontSize: 18,
-    marginBottom: 20,
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 10,
     textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 30,
+    textAlign: 'center',
+  },
+  buttonContainer: {
+    marginTop: 20,
   },
   link: {
     marginBottom: 20,
