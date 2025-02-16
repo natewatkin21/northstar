@@ -1,9 +1,9 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native'
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native'
 import React from 'react'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useFocusEffect } from '@react-navigation/native'
 import { FontAwesome5 } from '@expo/vector-icons'
-import { createSupabaseClient } from '../../../src/lib/supabase'
+import { createSupabaseClient } from '../../../../src/lib/supabase'
 import { useAuth } from '@clerk/clerk-expo'
 
 type WorkoutPlan = {
@@ -26,7 +26,7 @@ type PlanExercise = {
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-export default function PlanDetailScreen() {
+export default function ViewPlanScreen() {
   const { getToken } = useAuth()
   const router = useRouter()
   const params = useLocalSearchParams()
@@ -50,43 +50,46 @@ export default function PlanDetailScreen() {
   }, [plan?.name, router])
 
   const fetchPlanDetails = async () => {
-    if (!id) return
+    console.log('Fetching plan details for id:', id)
+    if (!id) {
+      console.log('No id provided, returning')
+      return
+    }
     try {
       setLoading(true)
-      
-      // Fetch plan details
       const token = await getToken({ template: 'supabase' })
       const supabase = createSupabaseClient(token || undefined)
       
+      console.log('Fetching plan data...')
       const { data: planData, error: planError } = await supabase
         .from('workout_plans')
         .select('*')
         .eq('id', id)
         .single()
 
-      if (planError) throw planError
+      if (planError) {
+        console.log('Plan error:', planError)
+        throw planError
+      }
+      console.log('Plan data:', planData)
       setPlan(planData)
 
-      // Fetch exercises for this plan
       const { data: exerciseData, error: exerciseError } = await supabase
         .from('plan_day_exercises')
         .select('*, exercises(name)')
         .eq('plan_id', id)
-        .order('day_of_week', { ascending: true })
-        .order('created_at', { ascending: true })
+        .order('day_of_week')
 
       if (exerciseError) throw exerciseError
       setExercises(exerciseData)
     } catch (error) {
       console.error('Error fetching plan details:', error)
       Alert.alert('Error', 'Failed to load workout plan')
-      router.back()
+      // Don't navigate away automatically, let user see the error
     } finally {
       setLoading(false)
     }
   }
-
-
 
   // Track if this is the initial mount
   const isInitialMount = React.useRef(true)
@@ -128,21 +131,10 @@ export default function PlanDetailScreen() {
   return (
     <View style={styles.container}>
       <ScrollView style={styles.content}>
-        
         {DAYS.map((day, index) => (
           <View key={day} style={styles.daySection}>
             <View style={styles.dayHeader}>
               <Text style={styles.dayName}>{day}</Text>
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={() => {
-                  // Add console.log to debug
-                  console.log('Adding exercise for day:', index)
-                  router.push(`/plans/${id}/add-exercise?day=${index}`)
-                }}
-              >
-                <FontAwesome5 name="plus" size={16} color="#007AFF" />
-              </TouchableOpacity>
             </View>
 
             {exercisesByDay[index].length > 0 ? (
@@ -163,23 +155,6 @@ export default function PlanDetailScreen() {
           </View>
         ))}
       </ScrollView>
-      <TouchableOpacity 
-        style={styles.saveButton} 
-        onPress={() => {
-          Alert.alert('Success', 'Plan saved!', [
-            { 
-              text: 'OK', 
-              onPress: () => {
-                if (id) {
-                  router.replace(`/plans/view/${id}`)
-                }
-              }
-            }
-          ])
-        }}
-      >
-        <Text style={styles.saveButtonText}>Save Plan</Text>
-      </TouchableOpacity>
     </View>
   )
 }
@@ -188,17 +163,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingBottom: 80, // Make room for save button
   },
   content: {
     flex: 1,
     padding: 16,
-  },
-  planName: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 24,
-    color: '#333',
   },
   daySection: {
     marginBottom: 24,
@@ -214,9 +182,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  addButton: {
-    padding: 8,
-  },
   exerciseCard: {
     backgroundColor: '#f8f8f8',
     padding: 16,
@@ -231,34 +196,15 @@ const styles = StyleSheet.create({
   exerciseDetails: {
     fontSize: 14,
     color: '#666',
+    marginBottom: 2,
   },
   noExercises: {
-    fontSize: 14,
-    color: '#999',
+    color: '#666',
     fontStyle: 'italic',
   },
   loadingText: {
-    fontSize: 16,
-    color: '#666',
     textAlign: 'center',
-    marginTop: 32,
-  },
-  headerButton: {
-    marginRight: 16,
-  },
-  saveButton: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#0891b2',
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    marginTop: 20,
+    color: '#666',
   },
 })

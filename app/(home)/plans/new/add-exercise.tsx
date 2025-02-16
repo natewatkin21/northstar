@@ -1,6 +1,6 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView } from 'react-native'
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native'
 import React from 'react'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useRouter, useLocalSearchParams } from 'expo-router'
 import { createSupabaseClient } from '../../../../src/lib/supabase'
 import { useAuth } from '@clerk/clerk-expo'
 import { FontAwesome5 } from '@expo/vector-icons'
@@ -14,24 +14,20 @@ export default function AddExerciseScreen() {
   const { getToken } = useAuth()
   const router = useRouter()
   const params = useLocalSearchParams()
-  const planId = typeof params.id === 'string' ? params.id : undefined
   const day = typeof params.day === 'string' || typeof params.day === 'number' ? Number(params.day) : undefined
+  const [searchQuery, setSearchQuery] = React.useState('')
+  const [exercises, setExercises] = React.useState<Exercise[]>([])
+  const [selectedExercise, setSelectedExercise] = React.useState<Exercise | null>(null)
+  const [sets, setSets] = React.useState('')
+  const [reps, setReps] = React.useState('')
+  const [restSeconds, setRestSeconds] = React.useState('')
 
-  // If no valid ID or day is provided, go back
+  // If no valid day is provided, go back
   React.useEffect(() => {
-    if (!planId || day === undefined || isNaN(day)) {
+    if (day === undefined || isNaN(day)) {
       router.back()
     }
-  }, [planId, day, router])
-  const [exercises, setExercises] = React.useState<Exercise[]>([])
-  const [loading, setLoading] = React.useState(true)
-  const [selectedExercise, setSelectedExercise] = React.useState<Exercise | null>(null)
-  const [sets, setSets] = React.useState('3')
-  const [reps, setReps] = React.useState('10')
-  const [restSeconds, setRestSeconds] = React.useState('60')
-  const [saving, setSaving] = React.useState(false)
-
-  const [searchQuery, setSearchQuery] = React.useState('')
+  }, [day, router])
 
   // Search exercises when query changes
   React.useEffect(() => {
@@ -56,8 +52,6 @@ export default function AddExerciseScreen() {
         setExercises(data || [])
       } catch (error) {
         console.error('Error searching exercises:', error)
-      } finally {
-        setLoading(false)
       }
     }
 
@@ -65,11 +59,8 @@ export default function AddExerciseScreen() {
     return () => clearTimeout(debounceTimeout)
   }, [searchQuery, getToken])
 
-  const handleSave = async () => {
-    if (!selectedExercise) {
-      Alert.alert('Error', 'Please select an exercise')
-      return
-    }
+  const handleAddExercise = () => {
+    if (!selectedExercise || day === undefined) return
 
     const setsNum = parseInt(sets)
     const repsNum = parseInt(reps)
@@ -90,36 +81,18 @@ export default function AddExerciseScreen() {
       return
     }
 
-    try {
-      setSaving(true)
-      const token = await getToken({ template: 'supabase' })
-      const supabase = createSupabaseClient(token || undefined)
-      
-      const { error } = await supabase
-        .from('plan_day_exercises')
-        .insert({
-          plan_id: planId,
-          exercise_id: selectedExercise.id,
-          day_of_week: day,
-          sets: setsNum,
-          reps: repsNum,
-          rest_seconds: restNum,
-        })
-
-      if (error) {
-        console.error('Database error:', error)
-        throw new Error(`Failed to save exercise: ${error.message}`)
+    // Return to previous screen with exercise data
+    router.push({
+      pathname: '/plans/new',
+      params: {
+        exerciseId: selectedExercise.id,
+        exerciseName: selectedExercise.name,
+        day: day,
+        sets: setsNum,
+        reps: repsNum,
+        restSeconds: restNum
       }
-
-      Alert.alert('Success', 'Exercise added to plan', [
-        { text: 'OK', onPress: () => router.push(`/plans/${planId}`) }
-      ])
-    } catch (error) {
-      console.error('Error saving exercise:', error)
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to save exercise to plan')
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   return (
@@ -169,13 +142,10 @@ export default function AddExerciseScreen() {
             keyboardType="number-pad"
           />
           <TouchableOpacity
-            style={[styles.addButton, saving && styles.addButtonDisabled]}
-            onPress={handleSave}
-            disabled={saving || !selectedExercise}
+            style={styles.addButton}
+            onPress={handleAddExercise}
           >
-            <Text style={styles.addButtonText}>
-              {saving ? 'Saving...' : 'Add to Plan'}
-            </Text>
+            <Text style={styles.addButtonText}>Add to Plan</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -236,7 +206,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  addButtonDisabled: {
-    opacity: 0.5
-  }
 })

@@ -86,9 +86,63 @@ export default function Layout() {
       />
 
       {/* Other screens (hidden from tab bar) */}
-      <Tabs.Screen name="plans/new" />
+      <Tabs.Screen 
+        name="plans/new" 
+        options={{
+          headerShown: true,
+          tabBarButton: () => null,
+          tabBarStyle: {
+            display: 'none',
+          },
+          headerBackVisible: false,
+          title: 'Create Plan',
+          headerTitleStyle: {
+            fontSize: 18,
+            fontWeight: '600',
+          },
+          headerTitleAlign: 'center',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => router.replace('/plans')}
+              style={{ marginLeft: 16 }}
+            >
+              <FontAwesome5 name="chevron-left" size={20} color="#0891b2" />
+            </TouchableOpacity>
+          ),
+        }}
+      />
       <Tabs.Screen 
         name="plans/[id]" 
+        options={({ route }) => ({
+          headerShown: true,
+          tabBarButton: () => null,
+          tabBarStyle: {
+            display: 'none',
+          },
+          headerBackVisible: false,
+          title: route.params?.title || 'Edit Plan',
+          headerTitleStyle: {
+            fontSize: 18,
+            fontWeight: '600',
+          },
+          headerTitleAlign: 'center',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => {
+                const id = route.params?.id
+                if (id) {
+                  router.replace(`/plans/view/${id}`)
+                }
+              }}
+              style={{ marginLeft: 16 }}
+            >
+              <FontAwesome5 name="chevron-left" size={20} color="#0891b2" />
+            </TouchableOpacity>
+          ),
+        })}
+      />
+      <Tabs.Screen 
+        name="plans/view/[id]" 
         options={({ route }) => ({
           headerShown: true,
           tabBarButton: () => null,
@@ -110,10 +164,79 @@ export default function Layout() {
               <FontAwesome5 name="chevron-left" size={20} color="#0891b2" />
             </TouchableOpacity>
           ),
+          headerRight: () => (
+            <TouchableOpacity 
+              onPress={() => {
+                const id = route.params?.id
+                if (id) {
+                  // Replace the current screen with edit screen to avoid navigation loops
+                  router.replace(`/plans/${id}`)
+                }
+              }}
+              style={{ marginRight: 16 }}
+            >
+              <FontAwesome5 name="edit" size={20} color="#0891b2" />
+            </TouchableOpacity>
+          ),
         })}
       />
       <Tabs.Screen name="exercises/new" />
-      <Tabs.Screen name="plans/[id]/add-exercise" />
+      <Tabs.Screen 
+        name="plans/[id]/add-exercise" 
+        options={({ route }) => ({
+          headerShown: true,
+          tabBarButton: () => null,
+          tabBarStyle: {
+            display: 'none',
+          },
+          headerBackVisible: false,
+          title: 'Add Exercise',
+          headerTitleStyle: {
+            fontSize: 18,
+            fontWeight: '600',
+          },
+          headerTitleAlign: 'center',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => {
+                const id = route.params?.id
+                if (id) {
+                  router.replace(`/plans/${id}`)
+                }
+              }}
+              style={{ marginLeft: 16 }}
+            >
+              <FontAwesome5 name="chevron-left" size={20} color="#0891b2" />
+            </TouchableOpacity>
+          ),
+        })}
+      />
+      <Tabs.Screen 
+        name="plans/new/add-exercise" 
+        options={{
+          headerShown: true,
+          tabBarButton: () => null,
+          tabBarStyle: {
+            display: 'none',
+          },
+          headerBackVisible: false,
+          title: 'Add Exercise',
+          headerTitleStyle: {
+            fontSize: 18,
+            fontWeight: '600',
+          },
+          headerTitleAlign: 'center',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => router.back()}
+              style={{ marginLeft: 16 }}
+            >
+              <FontAwesome5 name="chevron-left" size={20} color="#0891b2" />
+            </TouchableOpacity>
+          ),
+        }}
+      />
+
     </Tabs>
   );
 }

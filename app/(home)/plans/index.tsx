@@ -49,7 +49,7 @@ export default function PlansScreen() {
   const renderPlan = ({ item }: { item: WorkoutPlan }) => (
     <TouchableOpacity
       style={styles.planCard}
-      onPress={() => router.push(`/plans/${item.id}`)}
+      onPress={() => router.push(`/plans/view/${item.id}`)}
     >
       <View style={styles.planInfo}>
         <Text style={styles.planName}>{item.name}</Text>

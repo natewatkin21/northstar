@@ -1,11 +1,9 @@
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native'
 import React from 'react'
-import { useRouter } from 'expo-router'
+import { useRouter, useLocalSearchParams } from 'expo-router'
 import { createSupabaseClient } from '../../../src/lib/supabase'
 import { useAuth } from '@clerk/clerk-expo'
 import { FontAwesome5 } from '@expo/vector-icons'
-import BottomSheet from '@gorhom/bottom-sheet'
-import { GestureHandlerRootView } from 'react-native-gesture-handler'
 
 type Exercise = {
   id: string
@@ -17,6 +15,7 @@ type DayExercise = {
   sets: number
   reps: number
   rest_seconds: number
+  created_at?: string // Optional since existing exercises might not have it
 }
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -24,91 +23,71 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 export default function NewPlanScreen() {
   const { getToken } = useAuth()
   const router = useRouter()
+  const params = useLocalSearchParams()
   const [name, setName] = React.useState('')
   const [saving, setSaving] = React.useState(false)
-  const [exercises, setExercises] = React.useState<Exercise[]>([])
-  const [searchQuery, setSearchQuery] = React.useState('')
-  const [selectedDay, setSelectedDay] = React.useState<number | null>(null)
   const [dayExercises, setDayExercises] = React.useState<{ [key: number]: DayExercise[] }>({})
-  const bottomSheetRef = React.useRef<BottomSheet>(null)
-  const [selectedExercise, setSelectedExercise] = React.useState<Exercise | null>(null)
-  const [sets, setSets] = React.useState('')
-  const [reps, setReps] = React.useState('')
-  const [restSeconds, setRestSeconds] = React.useState('')
 
-  // Search exercises when query changes
+  // Function to clear form data
+  const clearFormData = React.useCallback(() => {
+    setName('')
+    setDayExercises({})
+    setSaving(false)
+  }, [])
+
+  // Clear form data and URL params on mount and unmount
   React.useEffect(() => {
-    const searchExercises = async () => {
-      if (!searchQuery.trim()) {
-        setExercises([])
-        return
-      }
+    // Clear URL params on mount
+    router.setParams({
+      exerciseId: undefined,
+      exerciseName: undefined,
+      day: undefined,
+      sets: undefined,
+      reps: undefined,
+      restSeconds: undefined
+    })
 
-      try {
-        const token = await getToken({ template: 'supabase' })
-        const supabase = createSupabaseClient(token || undefined)
-        
-        const { data, error } = await supabase
-          .from('exercises')
-          .select('id, name')
-          .ilike('name', `%${searchQuery}%`)
-          .order('name')
-          .limit(10)
-
-        if (error) throw error
-        setExercises(data || [])
-      } catch (error) {
-        console.error('Error searching exercises:', error)
-      }
+    // Clear form data on unmount
+    return () => {
+      clearFormData()
     }
+  }, [])
 
-    const debounceTimeout = setTimeout(searchExercises, 300)
-    return () => clearTimeout(debounceTimeout)
-  }, [searchQuery, getToken])
+  // Function to update exercises for a day
+  // Handle exercise params when returning from add exercise screen
+  React.useEffect(() => {
+    const exerciseId = params.exerciseId as string | undefined
+    const exerciseName = params.exerciseName as string | undefined
+    const day = params.day ? Number(params.day) : undefined
+    const sets = params.sets ? Number(params.sets) : undefined
+    const reps = params.reps ? Number(params.reps) : undefined
+    const restSeconds = params.restSeconds ? Number(params.restSeconds) : undefined
 
-  const handleAddExercise = () => {
-    if (!selectedExercise || selectedDay === null) return
-
-    const setsNum = parseInt(sets)
-    const repsNum = parseInt(reps)
-    const restNum = parseInt(restSeconds)
-
-    if (isNaN(setsNum) || setsNum < 1) {
-      Alert.alert('Error', 'Please enter a valid number of sets')
-      return
+    if (exerciseId && exerciseName && day !== undefined && 
+        sets && !isNaN(sets) && 
+        reps && !isNaN(reps) && 
+        restSeconds !== undefined && !isNaN(restSeconds)) {
+      
+      setDayExercises(prev => {
+        // Simply append the new exercise to the end of the array
+        return {
+          ...prev,
+          [day]: [
+            ...(prev[day] || []),
+            {
+              exercise: {
+                id: exerciseId,
+                name: exerciseName
+              },
+              sets: sets,
+              reps: reps,
+              rest_seconds: restSeconds
+            }
+          ]
+        }
+      })
     }
-
-    if (isNaN(repsNum) || repsNum < 1) {
-      Alert.alert('Error', 'Please enter a valid number of reps')
-      return
-    }
-
-    if (isNaN(restNum) || restNum < 0) {
-      Alert.alert('Error', 'Please enter a valid rest time')
-      return
-    }
-
-    setDayExercises(prev => ({
-      ...prev,
-      [selectedDay]: [
-        ...(prev[selectedDay] || []),
-        {
-          exercise: selectedExercise,
-          sets: setsNum,
-          reps: repsNum,
-          rest_seconds: restNum,
-        },
-      ],
-    }))
-
-    // Reset form
-    setSelectedExercise(null)
-    setSets('')
-    setReps('')
-    setRestSeconds('')
-    setSearchQuery('')
-    bottomSheetRef.current?.close()
-  }
+  }, [params.exerciseId, params.exerciseName, params.day, params.sets, params.reps, params.restSeconds])
 
   const handleSavePlan = async () => {
     if (!name.trim()) {
@@ -153,8 +132,17 @@ export default function NewPlanScreen() {
         throw new Error('Failed to add some exercises to the plan')
       }
 
-      // Navigate to the plan detail screen
-      router.replace(`/plans/${plan.id}`)
+      // Clear form data, URL params, and navigate to the view screen
+      clearFormData()
+      router.setParams({
+        exerciseId: undefined,
+        exerciseName: undefined,
+        day: undefined,
+        sets: undefined,
+        reps: undefined,
+        restSeconds: undefined
+      })
+      router.replace(`/plans/view/${plan.id}`)
     } catch (error) {
       console.error('Error creating plan:', error)
       Alert.alert('Error', 'Failed to create workout plan')
@@ -164,8 +152,7 @@ export default function NewPlanScreen() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={styles.container}>
+    <View style={styles.container}>
         <TextInput
           style={styles.nameInput}
           placeholder="Plan Name"
@@ -181,8 +168,10 @@ export default function NewPlanScreen() {
                 <Text style={styles.dayTitle}>{day}</Text>
                 <TouchableOpacity
                   onPress={() => {
-                    setSelectedDay(index)
-                    bottomSheetRef.current?.expand()
+                    router.push({
+                      pathname: '/plans/new/add-exercise',
+                      params: { day: index }
+                    })
                   }}
                 >
                   <FontAwesome5 name="plus" size={20} color="#0891b2" />
@@ -207,71 +196,7 @@ export default function NewPlanScreen() {
         >
           <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save Plan'}</Text>
         </TouchableOpacity>
-
-        <BottomSheet
-          ref={bottomSheetRef}
-          index={-1}
-          snapPoints={['75%']}
-          enablePanDownToClose
-          style={styles.bottomSheet}
-        >
-          <View style={styles.bottomSheetContent}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search exercises..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-
-            <ScrollView style={styles.searchResults}>
-              {exercises.map(exercise => (
-                <TouchableOpacity
-                  key={exercise.id}
-                  style={[styles.searchResult, selectedExercise?.id === exercise.id && styles.selectedSearchResult]}
-                  onPress={() => setSelectedExercise(exercise)}
-                >
-                  <Text style={[styles.searchResultText, selectedExercise?.id === exercise.id && styles.selectedSearchResultText]}>
-                    {exercise.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {selectedExercise && (
-              <View style={styles.exerciseForm}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Sets"
-                  value={sets}
-                  onChangeText={setSets}
-                  keyboardType="number-pad"
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Reps"
-                  value={reps}
-                  onChangeText={setReps}
-                  keyboardType="number-pad"
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Rest (seconds)"
-                  value={restSeconds}
-                  onChangeText={setRestSeconds}
-                  keyboardType="number-pad"
-                />
-                <TouchableOpacity
-                  style={styles.addButton}
-                  onPress={handleAddExercise}
-                >
-                  <Text style={styles.addButtonText}>Add to Plan</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </BottomSheet>
       </View>
-    </GestureHandlerRootView>
   )
 }
 
@@ -397,5 +322,14 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  bottomSheetBackground: {
+    backgroundColor: '#fff',
+  },
+  bottomSheetIndicator: {
+    backgroundColor: '#ccc',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
   }
 })
