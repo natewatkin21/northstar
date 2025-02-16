@@ -10,7 +10,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 // Create a Supabase client with a custom auth token
 export function createSupabaseClient(token?: string) {
-  return createClient(supabaseUrl!, supabaseAnonKey!, {
+  return createClient(supabaseUrl, supabaseAnonKey, {
     global: {
       headers: token ? {
         Authorization: `Bearer ${token}`
@@ -18,3 +18,6 @@ export function createSupabaseClient(token?: string) {
     }
   })
 }
+
+// Create a default Supabase client
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)

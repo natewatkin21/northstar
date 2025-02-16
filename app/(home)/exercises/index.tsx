@@ -55,14 +55,7 @@ export default function ExerciseList() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>My Exercises</Text>
-        <Link href="/exercises/new" asChild>
-          <TouchableOpacity style={styles.addButton}>
-            <Text style={styles.addButtonText}>Add Exercise</Text>
-          </TouchableOpacity>
-        </Link>
-      </View>
+
 
       <FlatList
         data={exercises}
@@ -84,31 +77,20 @@ export default function ExerciseList() {
 }
 
 const styles = StyleSheet.create({
+  headerButton: {
+    marginRight: 16,
+  },
+  headerButtonText: {
+    color: '#0891b2',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   container: {
     flex: 1,
     backgroundColor: '#fff',
     padding: 16,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  addButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  addButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
+
   exerciseItem: {
     backgroundColor: '#f5f5f5',
     padding: 16,
