@@ -1,3 +1,32 @@
+/**
+ * New Plan Screen
+ * 
+ * Allows users to create a new workout plan with multiple days and exercises.
+ * 
+ * Plan Creation Flow:
+ * 1. Enter plan name
+ * 2. Add days with custom names
+ * 3. Add exercises to each day with:
+ *    - Exercise name (selected from list)
+ *    - Sets (> 0)
+ *    - Reps (> 0)
+ *    - Rest time in seconds (>= 0)
+ * 
+ * Data Structure:
+ * - Each day has a numeric order (0-based)
+ * - Exercises within a day are ordered by created_at
+ * - All exercises for a day share the same day_name
+ * 
+ * Validation:
+ * 1. Plan name is required
+ * 2. Each day must have a name
+ * 3. Exercise details must be valid numbers
+ * 
+ * After Creation:
+ * - Redirects to plan list
+ * - New plan appears at top of list
+ */
+
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native'
 import React from 'react'
 import { useRouter, useLocalSearchParams } from 'expo-router'
@@ -18,8 +47,6 @@ type DayExercise = {
   created_at?: string // Optional since existing exercises might not have it
 }
 
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
 export default function NewPlanScreen() {
   const { getToken } = useAuth()
   const router = useRouter()
@@ -27,11 +54,13 @@ export default function NewPlanScreen() {
   const [name, setName] = React.useState('')
   const [saving, setSaving] = React.useState(false)
   const [dayExercises, setDayExercises] = React.useState<{ [key: number]: DayExercise[] }>({})
+  const [dayNames, setDayNames] = React.useState<{ [key: number]: string }>({})
 
   // Function to clear form data
   const clearFormData = React.useCallback(() => {
     setName('')
     setDayExercises({})
+    setDayNames({})
     setSaving(false)
   }, [])
 
@@ -95,6 +124,18 @@ export default function NewPlanScreen() {
       return
     }
 
+    // Check if all days with exercises have names
+    const daysWithExercises = Object.keys(dayExercises)
+    const missingDayNames = daysWithExercises.filter(day => {
+      const dayIndex = parseInt(day)
+      return dayExercises[dayIndex]?.length > 0 && !dayNames[dayIndex]?.trim()
+    })
+
+    if (missingDayNames.length > 0) {
+      Alert.alert('Error', 'Please enter names for all days that have exercises')
+      return
+    }
+
     try {
       setSaving(true)
       const token = await getToken({ template: 'supabase' })
@@ -109,28 +150,65 @@ export default function NewPlanScreen() {
 
       if (planError) throw planError
 
-      // Add exercises to each day
-      const exercisePromises = Object.entries(dayExercises).map(([day, exercises]) =>
-        exercises.map(exercise =>
-          supabase
-            .from('plan_day_exercises')
-            .insert({
-              plan_id: plan.id,
-              exercise_id: exercise.exercise.id,
-              day_of_week: parseInt(day),
-              sets: exercise.sets,
-              reps: exercise.reps,
-              rest_seconds: exercise.rest_seconds,
-            })
-        )
-      ).flat()
-
-      const results = await Promise.all(exercisePromises)
-      const errors = results.filter(result => result.error)
-
-      if (errors.length > 0) {
-        throw new Error('Failed to add some exercises to the plan')
+      console.log('Creating plan with days:', dayNames)
+      console.log('Creating plan with exercises:', dayExercises)
+      
+      // Prepare all inserts
+      const inserts = []
+      
+      // First, add any days that have names but no exercises
+      for (const [day, name] of Object.entries(dayNames)) {
+        const dayIndex = parseInt(day)
+        const trimmedName = name?.trim()
+        if (trimmedName && !dayExercises[day]?.length) {
+          console.log(`Adding day without exercises: ${trimmedName}`)
+          inserts.push({
+            plan_id: plan.id,
+            day_name: trimmedName,
+            day_order: dayIndex
+          })
+        }
       }
+
+      // Then add exercises for days that have them
+      for (const [day, exercises] of Object.entries(dayExercises)) {
+        const dayIndex = parseInt(day)
+        const dayName = dayNames[day]?.trim()
+        if (!dayName) {
+          console.log(`Skipping exercises for day ${day} - no day name`)
+          continue
+        }
+
+        console.log(`Adding ${exercises.length} exercises for day ${dayName}`)
+        exercises.forEach(exercise => {
+          inserts.push({
+            plan_id: plan.id,
+            exercise_id: exercise.exercise.id,
+            day_name: dayName,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            rest_seconds: exercise.rest_seconds,
+            day_order: dayIndex
+          })
+        })
+      }
+
+      // Insert all records at once
+      console.log('Inserting all plan day exercises:', inserts)
+      const { data, error } = await supabase
+        .from('plan_day_exercises')
+        .insert(inserts)
+        .select()
+        .order('day_order', { ascending: true })
+        .order('created_at', { ascending: true })
+      
+      if (error) {
+        console.error('Error inserting plan day exercises:', error)
+        throw error
+      }
+      console.log('Successfully inserted all plan day exercises:', data)
+
+      // All operations completed successfully
 
       // Clear form data, URL params, and navigate to the view screen
       clearFormData()
@@ -161,11 +239,17 @@ export default function NewPlanScreen() {
           autoCapitalize="words"
         />
 
-        <ScrollView style={styles.weekView}>
-          {DAYS.map((day, index) => (
-            <View key={day} style={styles.dayContainer}>
+        <ScrollView style={styles.content}>
+          {[0,1,2,3,4,5,6].map((index) => (
+            <View key={index} style={styles.daySection}>
               <View style={styles.dayHeader}>
-                <Text style={styles.dayTitle}>{day}</Text>
+                <TextInput
+                  style={styles.dayNameInput}
+                  placeholder="Day Name (e.g., Arms)"
+                  value={dayNames[index] || ''}
+                  onChangeText={(text) => setDayNames(prev => ({ ...prev, [index]: text }))}
+                  autoCapitalize="words"
+                />
                 <TouchableOpacity
                   onPress={() => {
                     router.push({
@@ -201,6 +285,15 @@ export default function NewPlanScreen() {
 }
 
 const styles = StyleSheet.create({
+  dayNameInput: {
+    flex: 1,
+    marginHorizontal: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 4,
+    fontSize: 14,
+  },
   buttonDisabled: {
     opacity: 0.5,
   },

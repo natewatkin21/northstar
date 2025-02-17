@@ -1,3 +1,28 @@
+/**
+ * Plans List Screen
+ * 
+ * The main entry point for workout plan management. Shows a list of all workout plans
+ * and provides navigation to create, view, or edit plans.
+ * 
+ * Features:
+ * 1. List all workout plans
+ * 2. Create new plan button
+ * 3. View/edit existing plans
+ * 
+ * Data Management:
+ * - Plans are sorted by creation date (newest first)
+ * - List refreshes when screen gains focus
+ * - Each plan shows:
+ *   - Plan name
+ *   - Creation date
+ *   - Navigation to view/edit
+ * 
+ * Authentication:
+ * - Requires user to be logged in
+ * - Uses Clerk for auth tokens
+ * - Supabase RLS ensures users only see their own plans
+ */
+
 import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native'
 import React from 'react'
 import { useRouter } from 'expo-router'

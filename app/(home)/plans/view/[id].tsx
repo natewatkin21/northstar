@@ -1,3 +1,25 @@
+/**
+ * View Plan Screen
+ * 
+ * This screen displays a read-only view of a workout plan, showing:
+ * 1. Plan name
+ * 2. Days and their exercises
+ * 3. Exercise details (sets, reps, rest time)
+ * 
+ * Data Display:
+ * - Exercises are grouped by day and ordered consistently with the edit screen
+ * - Exercise order: day_order (ascending) -> created_at (ascending)
+ * 
+ * Exercise Display Rules:
+ * - Exercises without names are filtered out
+ * - Empty days show "No exercises this day"
+ * - Rest time is only shown if greater than 0 seconds
+ * 
+ * Data Refresh:
+ * - Exercise data is refreshed when the screen gains focus
+ * - This ensures consistency with any edits made in other screens
+ */
+
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native'
 import React from 'react'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -15,7 +37,7 @@ type WorkoutPlan = {
 type PlanExercise = {
   id: string
   exercise_id: string
-  day_of_week: number
+  day_name: string | null
   sets: number
   reps: number
   rest_seconds: number
@@ -23,8 +45,6 @@ type PlanExercise = {
     name: string
   }
 }
-
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export default function ViewPlanScreen() {
   const { getToken } = useAuth()
@@ -76,9 +96,10 @@ export default function ViewPlanScreen() {
 
       const { data: exerciseData, error: exerciseError } = await supabase
         .from('plan_day_exercises')
-        .select('*, exercises(name)')
+        .select('id, exercise_id, day_name, sets, reps, rest_seconds, day_order, exercises(name)')
         .eq('plan_id', id)
-        .order('day_of_week')
+        .order('day_order', { ascending: true })
+        .order('created_at', { ascending: true })
 
       if (exerciseError) throw exerciseError
       setExercises(exerciseData)
@@ -111,13 +132,17 @@ export default function ViewPlanScreen() {
     }, [id])
   )
 
-  // Organize exercises by day
+  // Group exercises by day name
   const exercisesByDay = React.useMemo(() => {
-    const days: { [key: number]: PlanExercise[] } = {}
-    DAYS.forEach((_, index) => {
-      days[index] = exercises.filter(e => e.day_of_week === index)
+    const grouped: { [key: string]: PlanExercise[] } = {}
+    exercises.forEach(exercise => {
+      const dayName = exercise.day_name || 'Unnamed Day'
+      if (!grouped[dayName]) {
+        grouped[dayName] = []
+      }
+      grouped[dayName].push(exercise)
     })
-    return days
+    return grouped
   }, [exercises])
 
   if (loading || !plan) {
@@ -131,26 +156,32 @@ export default function ViewPlanScreen() {
   return (
     <View style={styles.container}>
       <ScrollView style={styles.content}>
-        {DAYS.map((day, index) => (
-          <View key={day} style={styles.daySection}>
+        {Object.entries(exercisesByDay).map(([dayName, dayExercises]) => (
+          <View key={dayName} style={styles.daySection}>
             <View style={styles.dayHeader}>
-              <Text style={styles.dayName}>{day}</Text>
+              <View style={styles.dayTitles}>
+                <Text style={styles.dayName}>{dayName}</Text>
+              </View>
             </View>
 
-            {exercisesByDay[index].length > 0 ? (
-              exercisesByDay[index].map((exercise) => (
-                <View key={exercise.id} style={styles.exerciseCard}>
-                  <Text style={styles.exerciseName}>{exercise.exercises.name}</Text>
-                  <Text style={styles.exerciseDetails}>
-                    {exercise.sets} sets × {exercise.reps} reps
-                  </Text>
-                  <Text style={styles.exerciseDetails}>
-                    {exercise.rest_seconds}s rest
-                  </Text>
-                </View>
-              ))
+            {dayExercises.filter(exercise => exercise.exercises?.name).length > 0 ? (
+              dayExercises
+                .filter(exercise => exercise.exercises?.name)
+                .map((exercise) => (
+                  <View key={exercise.id} style={styles.exerciseCard}>
+                    <Text style={styles.exerciseName}>{exercise.exercises.name}</Text>
+                    <Text style={styles.exerciseDetails}>
+                      {exercise.sets} sets × {exercise.reps} reps
+                    </Text>
+                    {exercise.rest_seconds > 0 && (
+                      <Text style={styles.exerciseDetails}>
+                        {exercise.rest_seconds}s rest
+                      </Text>
+                    )}
+                  </View>
+                ))
             ) : (
-              <Text style={styles.noExercises}>No exercises added</Text>
+              <Text style={styles.noExercises}>No exercises this day</Text>
             )}
           </View>
         ))}
@@ -160,6 +191,20 @@ export default function ViewPlanScreen() {
 }
 
 const styles = StyleSheet.create({
+  dayTitles: {
+    flex: 1,
+  },
+  noExercises: {
+    textAlign: 'center',
+    color: '#666',
+    padding: 16,
+    fontStyle: 'italic',
+  },
+  dayType: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
   container: {
     flex: 1,
     backgroundColor: '#fff',

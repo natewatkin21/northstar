@@ -15,14 +15,15 @@ export default function AddExerciseScreen() {
   const router = useRouter()
   const params = useLocalSearchParams()
   const planId = typeof params.id === 'string' ? params.id : undefined
-  const day = typeof params.day === 'string' || typeof params.day === 'number' ? Number(params.day) : undefined
+  const dayName = typeof params.day === 'string' ? params.day : undefined
+  const dayOrder = typeof params.order === 'string' ? parseInt(params.order) : undefined
 
   // If no valid ID or day is provided, go back
   React.useEffect(() => {
-    if (!planId || day === undefined || isNaN(day)) {
+    if (!planId || !dayName || dayOrder === undefined || isNaN(dayOrder)) {
       router.back()
     }
-  }, [planId, day, router])
+  }, [planId, dayName, dayOrder, router])
   const [exercises, setExercises] = React.useState<Exercise[]>([])
   const [loading, setLoading] = React.useState(true)
   const [selectedExercise, setSelectedExercise] = React.useState<Exercise | null>(null)
@@ -100,7 +101,9 @@ export default function AddExerciseScreen() {
         .insert({
           plan_id: planId,
           exercise_id: selectedExercise.id,
-          day_of_week: day,
+          day_name: dayName,
+          day_order: dayOrder,
+
           sets: setsNum,
           reps: repsNum,
           rest_seconds: restNum,
@@ -112,7 +115,7 @@ export default function AddExerciseScreen() {
       }
 
       Alert.alert('Success', 'Exercise added to plan', [
-        { text: 'OK', onPress: () => router.push(`/plans/${planId}`) }
+        { text: 'OK', onPress: () => router.replace(`/plans/${planId}`) }
       ])
     } catch (error) {
       console.error('Error saving exercise:', error)
@@ -184,6 +187,7 @@ export default function AddExerciseScreen() {
 }
 
 const styles = StyleSheet.create({
+
   container: {
     flex: 1,
     backgroundColor: '#fff',
