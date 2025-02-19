@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { createSupabaseClient } from '../../../src/lib/supabase';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
+import { FontAwesome5 } from '@expo/vector-icons';
 
 export default function NewExercise() {
   const { user } = useUser();
@@ -54,7 +55,20 @@ export default function NewExercise() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>New Exercise</Text>
+      <Stack.Screen 
+        options={{
+          title: 'Add New Exercise',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => router.push('/exercises')}
+              style={styles.backButton}
+            >
+              <FontAwesome5 name="chevron-left" size={16} color="#007AFF" />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+          )
+        }}
+      />
       
       <View style={styles.form}>
         <View style={styles.inputContainer}>
@@ -101,6 +115,17 @@ export default function NewExercise() {
 }
 
 const styles = StyleSheet.create({
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  backText: {
+    color: '#007AFF',
+    fontSize: 17,
+    marginLeft: 5,
+  },
   container: {
     flex: 1,
     backgroundColor: '#fff',

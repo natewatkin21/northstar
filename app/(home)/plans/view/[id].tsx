@@ -1,58 +1,55 @@
 /**
- * View Plan Screen
+ * Plan Overview Screen
  * 
- * This screen displays a read-only view of a workout plan, showing:
- * 1. Plan name
- * 2. Days and their exercises
- * 3. Exercise details (sets, reps, rest time)
+ * Displays and manages a workout plan's days and exercises.
  * 
- * Data Display:
- * - Exercises are grouped by day and ordered consistently with the edit screen
- * - Exercise order: day_order (ascending) -> created_at (ascending)
+ * Key Features:
+ * 1. Plan Management
+ *    - View exercises organized by day
+ *    - Set/unset as current plan
+ *    - Edit plan via top-right button
  * 
- * Exercise Display Rules:
- * - Exercises without names are filtered out
- * - Empty days show "No exercises this day"
- * - Rest time is only shown if greater than 0 seconds
+ * 2. Day Navigation
+ *    - Days ordered by day_order
+ *    - Click day card to view exercises
+ *    - Routes to /plans/view/[id]/[day]
  * 
- * Data Refresh:
- * - Exercise data is refreshed when the screen gains focus
- * - This ensures consistency with any edits made in other screens
+ * 3. Data Handling
+ *    - Auto-refresh on screen focus
+ *    - Loading state in header
+ *    - Consistent back navigation
  */
 
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native'
 import React from 'react'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router'
 import { useFocusEffect } from '@react-navigation/native'
 import { FontAwesome5 } from '@expo/vector-icons'
 import { createSupabaseClient } from '../../../../src/lib/supabase'
-import { useAuth } from '@clerk/clerk-expo'
+import { useAuth, useUser } from '@clerk/clerk-expo'
 
 type WorkoutPlan = {
   id: string
   name: string
   created_at: string
+  is_current: boolean
 }
 
-type PlanExercise = {
-  id: string
-  exercise_id: string
-  day_name: string | null
-  sets: number
-  reps: number
-  rest_seconds: number
-  exercises: {
-    name: string
-  }
+type Day = {
+  day_name: string
+  day_order: number
+  exercise_count: number
+  is_current?: boolean
 }
 
 export default function ViewPlanScreen() {
   const { getToken } = useAuth()
+  const { user } = useUser()
   const router = useRouter()
   const params = useLocalSearchParams()
   const id = typeof params.id === 'string' ? params.id : undefined
   const [plan, setPlan] = React.useState<WorkoutPlan | null>(null)
-  const [exercises, setExercises] = React.useState<PlanExercise[]>([])
+  const [days, setDays] = React.useState<Day[]>([])
   const [loading, setLoading] = React.useState(true)
 
   // If no valid ID is provided, go back to plans list
@@ -62,7 +59,7 @@ export default function ViewPlanScreen() {
     }
   }, [id, router])
 
-  // Update header title when plan loads
+  // Update header when plan loads
   React.useEffect(() => {
     if (plan?.name) {
       router.setParams({ title: plan.name })
@@ -91,18 +88,65 @@ export default function ViewPlanScreen() {
         console.log('Plan error:', planError)
         throw planError
       }
-      console.log('Plan data:', planData)
       setPlan(planData)
 
-      const { data: exerciseData, error: exerciseError } = await supabase
+      // Fetch all days including rest days (with undefined exercises)
+      const { data: daysData, error: daysError } = await supabase
         .from('plan_day_exercises')
-        .select('id, exercise_id, day_name, sets, reps, rest_seconds, day_order, exercises(name)')
+        .select('day_name, day_order, exercise_id, is_current')
         .eq('plan_id', id)
         .order('day_order', { ascending: true })
-        .order('created_at', { ascending: true })
 
-      if (exerciseError) throw exerciseError
-      setExercises(exerciseData)
+      if (daysError) throw daysError
+
+      // Group by day_name and count only non-undefined exercises
+      const dayMap = daysData.reduce((acc, curr) => {
+        if (!curr.day_name) return acc
+        
+        // Initialize the day if it doesn't exist
+        if (!acc[curr.day_name]) {
+          acc[curr.day_name] = {
+            day_name: curr.day_name,
+            day_order: curr.day_order,
+            exercise_count: 0,  // Start at 0, increment only for real exercises
+            is_current: curr.is_current || false
+          }
+        }
+        
+        // Only increment count for non-undefined exercises
+        if (curr.exercise_id !== null) {
+          acc[curr.day_name].exercise_count++
+        }
+        
+        return acc
+      }, {} as Record<string, Day>)
+
+      // Only set current day if this is the current plan
+      if (planData.is_current) {
+        const hasCurrentDay = Object.values(dayMap).some(day => day.is_current)
+        if (!hasCurrentDay) {
+          const sortedDays = Object.values(dayMap).sort((a, b) => a.day_order - b.day_order)
+          if (sortedDays.length > 0) {
+            // Update the database to mark first day as current
+            const firstDay = sortedDays[0]
+            await supabase
+              .from('plan_day_exercises')
+              .update({ is_current: true })
+              .eq('plan_id', id)
+              .eq('day_name', firstDay.day_name)
+
+            dayMap[firstDay.day_name].is_current = true
+          }
+        }
+      } else {
+        // If not current plan, ensure no days are marked as current
+        Object.values(dayMap).forEach(day => {
+          day.is_current = false
+        })
+      }
+
+      setDays(Object.values(dayMap))
+
     } catch (error) {
       console.error('Error fetching plan details:', error)
       Alert.alert('Error', 'Failed to load workout plan')
@@ -132,124 +176,260 @@ export default function ViewPlanScreen() {
     }, [id])
   )
 
-  // Group exercises by day name
-  const exercisesByDay = React.useMemo(() => {
-    const grouped: { [key: string]: PlanExercise[] } = {}
-    exercises.forEach(exercise => {
-      const dayName = exercise.day_name || 'Unnamed Day'
-      if (!grouped[dayName]) {
-        grouped[dayName] = []
-      }
-      grouped[dayName].push(exercise)
-    })
-    return grouped
-  }, [exercises])
+  const handleChangePlan = async () => {
+    if (!id || !user?.id) return
+    try {
+      console.log('Changing plan to:', id)
+      const token = await getToken({ template: 'supabase' })
+      const supabase = createSupabaseClient(token || undefined)
 
-  if (loading || !plan) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.loadingText}>Loading plan...</Text>
-      </View>
-    )
+      // First, set all plans to not current
+      console.log('Clearing current flag from all plans...')
+      await supabase
+        .from('workout_plans')
+        .update({ is_current: false })
+        .eq('user_id', user.id)
+
+      // Then set this plan as current
+      console.log('Setting current plan...')
+      await supabase
+        .from('workout_plans')
+        .update({ is_current: true })
+        .eq('id', id)
+
+      // Get the first day
+      const { data: daysData, error: daysError } = await supabase
+        .from('plan_day_exercises')
+        .select('day_name, day_order')
+        .eq('plan_id', id)
+        .order('day_order', { ascending: true })
+        .limit(1)
+
+      if (daysError) {
+        console.error('Error fetching first day:', daysError)
+        return
+      }
+
+      if (daysData && daysData.length > 0) {
+        // Clear current flag from ALL days in this plan
+        const { error: clearError } = await supabase
+          .from('plan_day_exercises')
+          .update({ is_current: false })
+          .eq('plan_id', id)
+
+        if (clearError) {
+          console.error('Error clearing days:', clearError)
+          return
+        }
+
+        // Get the specific day we want to set as current
+        const { data: targetDay } = await supabase
+          .from('plan_day_exercises')
+          .select('id, day_name')
+          .eq('plan_id', id)
+          .eq('day_name', daysData[0].day_name)
+          .order('created_at', { ascending: true })
+          .limit(1)
+
+        if (!targetDay || targetDay.length === 0) {
+          console.error('Could not find target day')
+          return
+        }
+
+        // Set the first day as current
+        const { error: setCurrentError } = await supabase
+          .from('plan_day_exercises')
+          .update({ is_current: true })
+          .eq('id', targetDay[0].id)
+
+        if (setCurrentError) {
+          console.error('Error setting current day:', setCurrentError)
+          return
+        }
+
+        // Verify the current day was set
+        console.log('Verifying current day...')
+        const { data: verifyData } = await supabase
+          .from('plan_day_exercises')
+          .select('plan_id, day_name')
+          .eq('is_current', true)
+
+        console.log('Current days after setting:', verifyData)
+      }
+
+      // Refetch plan details to update UI
+      fetchPlanDetails()
+    } catch (error) {
+      console.error('Error changing plan:', error)
+      Alert.alert('Error', 'Failed to change current plan')
+    }
   }
 
   return (
+    <>
+      <Stack.Screen
+        options={{
+          title: plan?.name || 'Loading...',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => router.push('/plans')}
+              style={styles.backButton}
+            >
+              <FontAwesome5 name="chevron-left" size={16} color="#007AFF" />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+          ),
+          headerRight: () => (
+            <TouchableOpacity 
+              onPress={() => router.push(`/plans/${id}?name=${encodeURIComponent(plan?.name || '')}`)}
+              style={styles.headerButton}
+            >
+              <FontAwesome5 name="edit" size={20} color="#007AFF" />
+            </TouchableOpacity>
+          )
+        }}
+      />
     <View style={styles.container}>
-      <ScrollView style={styles.content}>
-        {Object.entries(exercisesByDay).map(([dayName, dayExercises]) => (
-          <View key={dayName} style={styles.daySection}>
-            <View style={styles.dayHeader}>
-              <View style={styles.dayTitles}>
-                <Text style={styles.dayName}>{dayName}</Text>
+      <ScrollView style={styles.scrollView}>
+        {loading ? (
+          <Text style={styles.loadingText}>Loading days...</Text>
+        ) : days.length === 0 ? (
+          <Text style={styles.emptyText}>No days added yet</Text>
+        ) : (
+          days.map((day) => (
+            <TouchableOpacity
+              key={day.day_name}
+              style={[styles.dayCard, day.is_current && styles.currentDayCard]}
+              onPress={() => router.push(`/plans/view/${id}/${encodeURIComponent(day.day_name)}`)}
+            >
+              <View style={styles.dayCardContent}>
+                <View style={styles.dayNameContainer}>
+                  <Text style={[styles.dayName, day.is_current && styles.currentDayText]}>{day.day_name}</Text>
+                  {day.is_current && (
+                    <View style={styles.currentTag}>
+                      <Text style={styles.currentTagText}>Current Day</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.exerciseCount, day.is_current && styles.currentDayText]}>
+                  {day.exercise_count} exercise{day.exercise_count !== 1 ? 's' : ''}
+                </Text>
               </View>
-            </View>
-
-            {dayExercises.filter(exercise => exercise.exercises?.name).length > 0 ? (
-              dayExercises
-                .filter(exercise => exercise.exercises?.name)
-                .map((exercise) => (
-                  <View key={exercise.id} style={styles.exerciseCard}>
-                    <Text style={styles.exerciseName}>{exercise.exercises.name}</Text>
-                    <Text style={styles.exerciseDetails}>
-                      {exercise.sets} sets × {exercise.reps} reps
-                    </Text>
-                    {exercise.rest_seconds > 0 && (
-                      <Text style={styles.exerciseDetails}>
-                        {exercise.rest_seconds}s rest
-                      </Text>
-                    )}
-                  </View>
-                ))
-            ) : (
-              <Text style={styles.noExercises}>No exercises this day</Text>
-            )}
-          </View>
-        ))}
+              <FontAwesome5 name="chevron-right" size={16} color={day.is_current ? '#fff' : '#999'} />
+            </TouchableOpacity>
+          ))
+        )}
       </ScrollView>
+      <View style={styles.bottomContainer}>
+        {!loading && plan && (
+          <TouchableOpacity
+            style={[styles.actionButton, plan.is_current && styles.currentActionButton]}
+            onPress={plan.is_current ? () => router.push('/') : handleChangePlan}
+          >
+            <Text style={styles.actionButtonText}>
+              {plan.is_current ? 'Go' : 'Change to this plan'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
+    </>
   )
 }
 
 const styles = StyleSheet.create({
-  dayTitles: {
-    flex: 1,
+  headerButton: {
+    marginRight: 8,
+    padding: 8,
   },
-  noExercises: {
-    textAlign: 'center',
-    color: '#666',
+  bottomContainer: {
     padding: 16,
-    fontStyle: 'italic',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    backgroundColor: '#fff',
   },
-  dayType: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 2,
+  actionButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  currentActionButton: {
+    backgroundColor: '#34C759',  // iOS green color for success
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  dayNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  currentDayCard: {
+    backgroundColor: '#007AFF',
+  },
+  currentDayText: {
+    color: '#fff',
+  },
+  currentTag: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  currentTagText: {
+    color: '#007AFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  backText: {
+    color: '#007AFF',
+    fontSize: 17,
+    marginLeft: 5,
   },
   container: {
     flex: 1,
     backgroundColor: '#fff',
   },
-  content: {
+  scrollView: {
     flex: 1,
-    padding: 16,
-  },
-  daySection: {
-    marginBottom: 24,
-  },
-  dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  dayName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  exerciseCard: {
-    backgroundColor: '#f8f8f8',
-    padding: 16,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  exerciseName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  exerciseDetails: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 2,
-  },
-  noExercises: {
-    color: '#666',
-    fontStyle: 'italic',
   },
   loadingText: {
     textAlign: 'center',
     marginTop: 20,
+    color: '#666',
+  },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 20,
+    color: '#666',
+  },
+  dayCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dayCardContent: {
+    flex: 1,
+  },
+  dayName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  exerciseCount: {
+    fontSize: 14,
     color: '#666',
   },
 })

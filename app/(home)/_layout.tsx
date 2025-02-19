@@ -1,242 +1,55 @@
-import { Tabs } from 'expo-router/tabs';
+/**
+ * Root Layout for Home Screens
+ * 
+ * This layout defines consistent navigation behavior across all home screens.
+ * Key features:
+ * 1. Default Loading State
+ *    - Shows "Loading..." in header during data fetches
+ *    - Prevents route path flashing in title
+ * 
+ * 2. Consistent Back Button
+ *    - Custom back button with chevron + "Back" text
+ *    - Matches design across all screens
+ * 
+ * 3. Navigation Animation
+ *    - Disabled on iOS for smoother transitions
+ *    - Helps prevent title flashing during navigation
+ */
+
+import { Stack, useRouter } from 'expo-router';
+import { Platform, TouchableOpacity, Text } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { TouchableOpacity, Text } from 'react-native';
 
 export default function Layout() {
   const router = useRouter();
-
   return (
-    <Tabs screenOptions={{
-      headerShown: true,
-      tabBarActiveTintColor: '#0891b2',
-      headerTintColor: '#0891b2',
-      headerStyle: {
-        backgroundColor: '#fff',
-      },
-      tabBarStyle: {
-        backgroundColor: '#fff',
-        width: '100%',
-        paddingHorizontal: 0,
-      },
-      tabBarItemStyle: {
-        width: '33.33%',
-        padding: 0,
-        margin: 0,
-      },
-      tabBarLabelStyle: {
-        fontSize: 12,
-      },
-      // Hide all screens from tab bar by default
-      tabBarButton: () => null,
-    }}>
-      {/* Home Tab */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size }) => (
-            <FontAwesome5 name="home" size={size} color={color} />
-          ),
-          // Show this screen in tab bar
-          tabBarButton: undefined,
-        }}
-      />
-
-      {/* Plans Tab */}
-      <Tabs.Screen
-        name="plans/index"
-        options={{
-          title: 'Plans',
-          tabBarIcon: ({ color, size }) => (
-            <FontAwesome5 name="calendar-alt" size={size} color={color} />
-          ),
-          headerRight: () => (
-            <TouchableOpacity 
-              onPress={() => router.push('/plans/new')}
-              style={{ marginRight: 16 }}
-            >
-              <Text style={{ color: '#0891b2', fontSize: 16 }}>Create New</Text>
-            </TouchableOpacity>
-          ),
-          // Show this screen in tab bar
-          tabBarButton: undefined,
-        }}
-      />
-
-      {/* Exercises Tab */}
-      <Tabs.Screen
-        name="exercises/index"
-        options={{
-          title: 'Exercises',
-          tabBarIcon: ({ color, size }) => (
-            <FontAwesome5 name="dumbbell" size={size} color={color} />
-          ),
-          headerRight: () => (
-            <TouchableOpacity 
-              onPress={() => router.push('/exercises/new')}
-              style={{ marginRight: 16 }}
-            >
-              <Text style={{ color: '#0891b2', fontSize: 16 }}>Add New</Text>
-            </TouchableOpacity>
-          ),
-          // Show this screen in tab bar
-          tabBarButton: undefined,
-        }}
-      />
-
-      {/* Other screens (hidden from tab bar) */}
-      <Tabs.Screen 
-        name="plans/new" 
-        options={{
-          headerShown: true,
-          tabBarButton: () => null,
-          tabBarStyle: {
-            display: 'none',
-          },
-          headerBackVisible: false,
-          title: 'Create Plan',
-          headerTitleStyle: {
-            fontSize: 18,
-            fontWeight: '600',
-          },
-          headerTitleAlign: 'center',
-          headerLeft: () => (
-            <TouchableOpacity 
-              onPress={() => router.replace('/plans')}
-              style={{ marginLeft: 16 }}
-            >
-              <FontAwesome5 name="chevron-left" size={20} color="#0891b2" />
-            </TouchableOpacity>
-          ),
-        }}
-      />
-      <Tabs.Screen 
-        name="plans/[id]" 
-        options={({ route }) => ({
-          headerShown: true,
-          tabBarButton: () => null,
-          tabBarStyle: {
-            display: 'none',
-          },
-          headerBackVisible: false,
-          title: route.params?.title || 'Edit Plan',
-          headerTitleStyle: {
-            fontSize: 18,
-            fontWeight: '600',
-          },
-          headerTitleAlign: 'center',
-          headerLeft: () => (
-            <TouchableOpacity 
-              onPress={() => {
-                const id = route.params?.id
-                if (id) {
-                  router.replace(`/plans/view/${id}`)
-                }
-              }}
-              style={{ marginLeft: 16 }}
-            >
-              <FontAwesome5 name="chevron-left" size={20} color="#0891b2" />
-            </TouchableOpacity>
-          ),
-        })}
-      />
-      <Tabs.Screen 
-        name="plans/view/[id]" 
-        options={({ route }) => ({
-          headerShown: true,
-          tabBarButton: () => null,
-          tabBarStyle: {
-            display: 'none',
-          },
-          headerBackVisible: false,
-          title: route.params?.title || 'Plan Details',
-          headerTitleStyle: {
-            fontSize: 18,
-            fontWeight: '600',
-          },
-          headerTitleAlign: 'center',
-          headerLeft: () => (
-            <TouchableOpacity 
-              onPress={() => router.replace('/plans')}
-              style={{ marginLeft: 16 }}
-            >
-              <FontAwesome5 name="chevron-left" size={20} color="#0891b2" />
-            </TouchableOpacity>
-          ),
-          headerRight: () => (
-            <TouchableOpacity 
-              onPress={() => {
-                const id = route.params?.id
-                if (id) {
-                  // Replace the current screen with edit screen to avoid navigation loops
-                  router.replace(`/plans/${id}`)
-                }
-              }}
-              style={{ marginRight: 16 }}
-            >
-              <FontAwesome5 name="edit" size={20} color="#0891b2" />
-            </TouchableOpacity>
-          ),
-        })}
-      />
-      <Tabs.Screen name="exercises/new" />
-      <Tabs.Screen 
-        name="plans/[id]/add-exercise" 
-        options={({ route }) => ({
-          headerShown: true,
-          tabBarButton: () => null,
-          tabBarStyle: {
-            display: 'none',
-          },
-          headerBackVisible: false,
-          title: 'Add Exercise',
-          headerTitleStyle: {
-            fontSize: 18,
-            fontWeight: '600',
-          },
-          headerTitleAlign: 'center',
-          headerLeft: () => (
-            <TouchableOpacity 
-              onPress={() => {
-                const id = route.params?.id
-                if (id) {
-                  router.replace(`/plans/${id}`)
-                }
-              }}
-              style={{ marginLeft: 16 }}
-            >
-              <FontAwesome5 name="chevron-left" size={20} color="#0891b2" />
-            </TouchableOpacity>
-          ),
-        })}
-      />
-      <Tabs.Screen 
-        name="plans/new/add-exercise" 
-        options={{
-          headerShown: true,
-          tabBarButton: () => null,
-          tabBarStyle: {
-            display: 'none',
-          },
-          headerBackVisible: false,
-          title: 'Add Exercise',
-          headerTitleStyle: {
-            fontSize: 18,
-            fontWeight: '600',
-          },
-          headerTitleAlign: 'center',
-          headerLeft: () => (
-            <TouchableOpacity 
-              onPress={() => router.back()}
-              style={{ marginLeft: 16 }}
-            >
-              <FontAwesome5 name="chevron-left" size={20} color="#0891b2" />
-            </TouchableOpacity>
-          ),
-        }}
-      />
-
-    </Tabs>
+    <Stack
+      screenOptions={{
+        animation: Platform.OS === 'ios' ? 'none' : undefined,
+        headerStyle: {
+          backgroundColor: '#fff',
+        },
+        headerTintColor: '#007AFF',
+        title: 'Loading...',
+        headerLeft: ({ canGoBack }) => canGoBack ? (
+          <TouchableOpacity 
+            onPress={() => router.back()}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingVertical: 10,
+              paddingHorizontal: 10,
+            }}
+          >
+            <FontAwesome5 name="chevron-left" size={16} color="#007AFF" />
+            <Text style={{
+              color: '#007AFF',
+              fontSize: 17,
+              marginLeft: 5,
+            }}>Back</Text>
+          </TouchableOpacity>
+        ) : undefined
+      }}
+    />
   );
 }

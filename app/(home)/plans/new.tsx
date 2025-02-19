@@ -29,10 +29,11 @@
 
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native'
 import React from 'react'
-import { useRouter, useLocalSearchParams } from 'expo-router'
+import { useRouter, useLocalSearchParams, useFocusEffect, Stack } from 'expo-router'
 import { createSupabaseClient } from '../../../src/lib/supabase'
-import { useAuth } from '@clerk/clerk-expo'
+import { useAuth, useUser } from '@clerk/clerk-expo'
 import { FontAwesome5 } from '@expo/vector-icons'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 type Exercise = {
   id: string
@@ -49,6 +50,7 @@ type DayExercise = {
 
 export default function NewPlanScreen() {
   const { getToken } = useAuth()
+  const { user } = useUser()
   const router = useRouter()
   const params = useLocalSearchParams()
   const [name, setName] = React.useState('')
@@ -56,67 +58,116 @@ export default function NewPlanScreen() {
   const [dayExercises, setDayExercises] = React.useState<{ [key: number]: DayExercise[] }>({})
   const [dayNames, setDayNames] = React.useState<{ [key: number]: string }>({})
 
-  // Function to clear form data
-  const clearFormData = React.useCallback(() => {
-    setName('')
-    setDayExercises({})
-    setDayNames({})
-    setSaving(false)
-  }, [])
-
-  // Clear form data and URL params on mount and unmount
+  // Load saved form data on mount
   React.useEffect(() => {
-    // Clear URL params on mount
-    router.setParams({
-      exerciseId: undefined,
-      exerciseName: undefined,
-      day: undefined,
-      sets: undefined,
-      reps: undefined,
-      restSeconds: undefined
-    })
-
-    // Clear form data on unmount
-    return () => {
-      clearFormData()
-    }
-  }, [])
-
-  // Function to update exercises for a day
-  // Handle exercise params when returning from add exercise screen
-  React.useEffect(() => {
-    const exerciseId = params.exerciseId as string | undefined
-    const exerciseName = params.exerciseName as string | undefined
-    const day = params.day ? Number(params.day) : undefined
-    const sets = params.sets ? Number(params.sets) : undefined
-    const reps = params.reps ? Number(params.reps) : undefined
-    const restSeconds = params.restSeconds ? Number(params.restSeconds) : undefined
-
-    if (exerciseId && exerciseName && day !== undefined && 
-        sets && !isNaN(sets) && 
-        reps && !isNaN(reps) && 
-        restSeconds !== undefined && !isNaN(restSeconds)) {
-      
-      setDayExercises(prev => {
-        // Simply append the new exercise to the end of the array
-        return {
-          ...prev,
-          [day]: [
-            ...(prev[day] || []),
-            {
-              exercise: {
-                id: exerciseId,
-                name: exerciseName
-              },
-              sets: sets,
-              reps: reps,
-              rest_seconds: restSeconds
-            }
-          ]
+    const loadSavedData = async () => {
+      try {
+        const savedData = await AsyncStorage.getItem('newPlanFormData')
+        if (savedData) {
+          const { name: savedName, dayExercises: savedExercises, dayNames: savedNames } = JSON.parse(savedData)
+          setName(savedName || '')
+          setDayExercises(savedExercises || {})
+          setDayNames(savedNames || {})
         }
-      })
+      } catch (error) {
+        console.error('Error loading saved form data:', error)
+      }
     }
-  }, [params.exerciseId, params.exerciseName, params.day, params.sets, params.reps, params.restSeconds])
+    loadSavedData()
+  }, [])
+
+  // Function to clear all form data
+  const clearFormData = async () => {
+    try {
+      await AsyncStorage.removeItem('newPlanFormData')
+      setName('')
+      setDayNames({})
+      setDayExercises({})
+    } catch (error) {
+      console.error('Error clearing form data:', error)
+    }
+  }
+
+  // Save form data whenever state changes
+  React.useEffect(() => {
+    const saveFormData = async () => {
+      try {
+        if (name || Object.keys(dayExercises).length > 0 || Object.keys(dayNames).length > 0) {
+          await AsyncStorage.setItem('newPlanFormData', JSON.stringify({
+            name,
+            dayExercises,
+            dayNames
+          }))
+        }
+      } catch (error) {
+        console.error('Error saving form data:', error)
+      }
+    }
+    saveFormData()
+  }, [name, dayExercises, dayNames])
+
+  // Check for pending exercise on focus
+  useFocusEffect(
+    React.useCallback(() => {
+    const checkPendingExercise = async () => {
+      try {
+        const pendingData = await AsyncStorage.getItem('pendingExercise')
+        if (pendingData) {
+          const exercise = JSON.parse(pendingData)
+          console.log('Found pending exercise:', exercise)
+          
+          setDayExercises(prev => {
+            const newExercises = {
+              ...prev,
+              [exercise.day]: [
+                ...(prev[exercise.day] || []),
+                {
+                  exercise: {
+                    id: exercise.exerciseId,
+                    name: exercise.exerciseName
+                  },
+                  sets: exercise.sets,
+                  reps: exercise.reps,
+                  rest_seconds: exercise.restSeconds
+                }
+              ]
+            }
+            return newExercises
+          })
+          
+          // Clear the pending exercise
+          await AsyncStorage.removeItem('pendingExercise')
+        }
+      } catch (error) {
+        console.error('Error checking pending exercise:', error)
+      }
+    }
+    
+    checkPendingExercise()
+  }, []))
+
+  // Load saved form data on mount
+  React.useEffect(() => {
+    const loadSavedData = async () => {
+      try {
+        const savedData = await AsyncStorage.getItem('newPlanFormData')
+        if (savedData) {
+          const { name: savedName, dayExercises: savedExercises, dayNames: savedNames } = JSON.parse(savedData)
+          setName(savedName || '')
+          setDayExercises(savedExercises || {})
+          setDayNames(savedNames || {})
+        }
+      } catch (error) {
+        console.error('Error loading saved form data:', error)
+      }
+    }
+    loadSavedData()
+  }, [])
+
+  const handleBack = async () => {
+    await clearFormData()
+    router.back()
+  }
 
   const handleSavePlan = async () => {
     if (!name.trim()) {
@@ -141,10 +192,22 @@ export default function NewPlanScreen() {
       const token = await getToken({ template: 'supabase' })
       const supabase = createSupabaseClient(token || undefined)
       
+      // Check if this should be the current plan (if it's the first plan or if no current plan exists)
+      const { data: currentPlans, error: currentError } = await supabase
+        .from('workout_plans')
+        .select('id')
+        .eq('is_current', true)
+
+      if (currentError) throw currentError
+      const shouldBeCurrent = currentPlans.length === 0
+
       // Create the plan
       const { data: plan, error: planError } = await supabase
         .from('workout_plans')
-        .insert([{ name: name.trim() }])
+        .insert([{ 
+          name: name.trim(),
+          is_current: shouldBeCurrent
+        }])
         .select()
         .single()
 
@@ -210,16 +273,13 @@ export default function NewPlanScreen() {
 
       // All operations completed successfully
 
-      // Clear form data, URL params, and navigate to the view screen
-      clearFormData()
-      router.setParams({
-        exerciseId: undefined,
-        exerciseName: undefined,
-        day: undefined,
-        sets: undefined,
-        reps: undefined,
-        restSeconds: undefined
-      })
+      // Clear saved form data and reset state
+      await AsyncStorage.removeItem('newPlanFormData')
+      setName('')
+      setDayExercises({})
+      setDayNames({})
+      setSaving(false)
+
       router.replace(`/plans/view/${plan.id}`)
     } catch (error) {
       console.error('Error creating plan:', error)
@@ -231,7 +291,21 @@ export default function NewPlanScreen() {
 
   return (
     <View style={styles.container}>
-        <TextInput
+      <Stack.Screen 
+        options={{
+          title: 'Create New Plan',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={handleBack}
+              style={styles.backButton}
+            >
+              <FontAwesome5 name="chevron-left" size={16} color="#007AFF" />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+          )
+        }}
+      />
+      <TextInput
           style={styles.nameInput}
           placeholder="Plan Name"
           value={name}
@@ -285,6 +359,16 @@ export default function NewPlanScreen() {
 }
 
 const styles = StyleSheet.create({
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  backText: {
+    color: '#007AFF',
+    fontSize: 16,
+    marginLeft: 4,
+  },
   dayNameInput: {
     flex: 1,
     marginHorizontal: 8,

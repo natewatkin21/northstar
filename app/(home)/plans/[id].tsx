@@ -23,7 +23,7 @@
 
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput } from 'react-native'
 import React from 'react'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router'
 import { useFocusEffect } from '@react-navigation/native'
 import { FontAwesome5 } from '@expo/vector-icons'
 import { createSupabaseClient } from '../../../src/lib/supabase'
@@ -55,6 +55,12 @@ export default function PlanDetailScreen() {
   const id = typeof params.id === 'string' ? params.id : undefined
   const [plan, setPlan] = React.useState<WorkoutPlan | null>(null)
   const [planName, setPlanName] = React.useState('')
+
+  React.useEffect(() => {
+    if (params.name && typeof params.name === 'string') {
+      setPlanName(decodeURIComponent(params.name))
+    }
+  }, [params.name])
   const [exercises, setExercises] = React.useState<PlanExercise[]>([])
   const [dayNames, setDayNames] = React.useState<{ [key: number]: string }>({})
   const [loading, setLoading] = React.useState(true)
@@ -67,12 +73,12 @@ export default function PlanDetailScreen() {
     }
   }, [id, router])
 
-  // Update header title when plan loads
+  // Set initial plan name from URL params
   React.useEffect(() => {
-    if (plan?.name) {
-      router.setParams({ title: plan.name })
+    if (params.name && typeof params.name === 'string') {
+      setPlanName(decodeURIComponent(params.name))
     }
-  }, [plan?.name, router])
+  }, [params.name])
 
   const fetchPlanDetails = React.useCallback(async () => {
     if (!id) return
@@ -256,15 +262,23 @@ export default function PlanDetailScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <TextInput
-        style={styles.nameInput}
-        placeholder="Plan Name"
-        value={planName}
-        onChangeText={setPlanName}
-        autoCapitalize="words"
+    <>
+      <Stack.Screen
+        options={{
+          title: loading ? 'Loading...' : planName,
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => router.push(`/plans/view/${id}`)}
+              style={styles.backButton}
+            >
+              <FontAwesome5 name="chevron-left" size={16} color="#007AFF" />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+          )
+        }}
       />
-      <ScrollView style={styles.content}>
+      <View style={styles.container}>
+        <ScrollView style={styles.content}>
         
         {Object.entries(exercisesByDay).map(([dayOrder, dayExercises]) => (
           <View key={dayOrder} style={styles.daySection}>
@@ -315,24 +329,30 @@ export default function PlanDetailScreen() {
             )}
           </View>
         ))}
-      </ScrollView>
-      <TouchableOpacity
-        style={[styles.saveButton, saving && styles.buttonDisabled]}
-        onPress={handleSavePlan}
-        disabled={saving}
-      >
-        <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save Plan'}</Text>
-      </TouchableOpacity>
-    </View>
+        </ScrollView>
+        <TouchableOpacity
+          style={[styles.saveButton, saving && styles.buttonDisabled]}
+          onPress={handleSavePlan}
+          disabled={saving}
+        >
+          <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save Plan'}</Text>
+        </TouchableOpacity>
+      </View>
+    </>
   )
 }
 
 const styles = StyleSheet.create({
-  nameInput: {
-    fontSize: 24,
-    fontWeight: '600',
-    padding: 16,
-    backgroundColor: '#fff',
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  backText: {
+    color: '#007AFF',
+    fontSize: 17,
+    marginLeft: 5,
   },
   dayNameInput: {
     flex: 1,

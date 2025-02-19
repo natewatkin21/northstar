@@ -3,7 +3,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { createSupabaseClient } from '../../../src/lib/supabase';
-import { Link } from 'expo-router';
+import { Link, Stack, useRouter } from 'expo-router';
+import { FontAwesome5 } from '@expo/vector-icons';
 
 type Exercise = {
   id: string;
@@ -15,6 +16,7 @@ type Exercise = {
 export default function ExerciseList() {
   const { user } = useUser();
   const { getToken } = useAuth();
+  const router = useRouter();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +36,7 @@ export default function ExerciseList() {
       const { data, error } = await supabase
         .from('exercises')
         .select('*')
-        .order('name');
+        .order('created_at', { ascending: true });
       
       if (error) throw error;
       setExercises(data || []);
@@ -48,6 +50,28 @@ export default function ExerciseList() {
   if (loading) {
     return (
       <View style={styles.container}>
+        <Stack.Screen 
+          options={{
+            title: 'Exercise Library',
+            headerLeft: () => (
+              <TouchableOpacity 
+                onPress={() => router.push('/menu')}
+                style={styles.backButton}
+              >
+                <FontAwesome5 name="chevron-left" size={16} color="#007AFF" />
+                <Text style={styles.backText}>Back</Text>
+              </TouchableOpacity>
+            ),
+            headerRight: () => (
+              <TouchableOpacity 
+                onPress={() => router.push('/exercises/new')}
+                style={styles.headerButton}
+              >
+                <Text style={styles.headerButtonText}>Add New</Text>
+              </TouchableOpacity>
+            )
+          }}
+        />
         <ActivityIndicator size="large" />
       </View>
     );
@@ -55,7 +79,28 @@ export default function ExerciseList() {
 
   return (
     <View style={styles.container}>
-
+      <Stack.Screen 
+        options={{
+          title: 'Exercise Library',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => router.push('/menu')}
+              style={styles.backButton}
+            >
+              <FontAwesome5 name="chevron-left" size={16} color="#007AFF" />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+          ),
+          headerRight: () => (
+            <TouchableOpacity 
+              onPress={() => router.push('/exercises/new')}
+              style={styles.headerButton}
+            >
+              <Text style={styles.headerButtonText}>Add New</Text>
+            </TouchableOpacity>
+          )
+        }}
+      />
 
       <FlatList
         data={exercises}
@@ -77,18 +122,36 @@ export default function ExerciseList() {
 }
 
 const styles = StyleSheet.create({
-  headerButton: {
-    marginRight: 16,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingBottom: 10,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
-  headerButtonText: {
-    color: '#0891b2',
-    fontSize: 16,
+  headerTitle: {
+    fontSize: 17,
     fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+    marginRight: 40,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    marginLeft: 8,
+  },
+  backText: {
+    color: '#007AFF',
+    marginLeft: 4,
+    fontSize: 17,
   },
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    padding: 16,
   },
 
   exerciseItem: {

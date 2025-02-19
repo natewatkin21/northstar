@@ -1,9 +1,10 @@
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native'
 import React from 'react'
-import { useRouter, useLocalSearchParams } from 'expo-router'
+import { useRouter, useLocalSearchParams, Stack } from 'expo-router'
 import { createSupabaseClient } from '../../../../src/lib/supabase'
 import { useAuth } from '@clerk/clerk-expo'
 import { FontAwesome5 } from '@expo/vector-icons'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 type Exercise = {
   id: string
@@ -59,7 +60,7 @@ export default function AddExerciseScreen() {
     return () => clearTimeout(debounceTimeout)
   }, [searchQuery, getToken])
 
-  const handleAddExercise = () => {
+  const handleAddExercise = async () => {
     if (!selectedExercise || day === undefined) return
 
     const setsNum = parseInt(sets)
@@ -81,22 +82,32 @@ export default function AddExerciseScreen() {
       return
     }
 
-    // Return to previous screen with exercise data
-    router.push({
-      pathname: '/plans/new',
-      params: {
-        exerciseId: selectedExercise.id,
-        exerciseName: selectedExercise.name,
-        day: day,
-        sets: setsNum,
-        reps: repsNum,
-        restSeconds: restNum
-      }
-    })
+    // Save exercise data to AsyncStorage and return to previous screen
+    const exerciseData = {
+      exerciseId: selectedExercise.id,
+      exerciseName: selectedExercise.name,
+      day: day,
+      sets: setsNum,
+      reps: repsNum,
+      restSeconds: restNum
+    }
+    
+    try {
+      await AsyncStorage.setItem('pendingExercise', JSON.stringify(exerciseData))
+      router.replace('/plans/new')
+    } catch (error) {
+      console.error('Error saving exercise data:', error)
+      Alert.alert('Error', 'Failed to save exercise data')
+    }
   }
 
   return (
     <View style={styles.container}>
+      <Stack.Screen 
+        options={{
+          title: 'Add Exercise'
+        }}
+      />
       <TextInput
         style={styles.searchInput}
         placeholder="Search exercises..."

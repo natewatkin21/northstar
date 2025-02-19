@@ -1,6 +1,27 @@
+/**
+ * Add Exercise Screen
+ * 
+ * Allows users to add exercises to a specific day in a workout plan.
+ * Key features:
+ * 1. Navigation
+ *    - Fixed "Add Exercise" title
+ *    - Consistent back button with layout
+ *    - Returns to edit plan screen
+ * 
+ * 2. Exercise Search
+ *    - Real-time search with debouncing
+ *    - Highlights selected exercise
+ *    - Shows exercise details form when selected
+ * 
+ * 3. Exercise Configuration
+ *    - Sets, reps, and rest time inputs
+ *    - Validates all fields before saving
+ *    - Shows saving state during submission
+ */
+
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView } from 'react-native'
 import React from 'react'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router'
 import { createSupabaseClient } from '../../../../src/lib/supabase'
 import { useAuth } from '@clerk/clerk-expo'
 import { FontAwesome5 } from '@expo/vector-icons'
@@ -126,7 +147,22 @@ export default function AddExerciseScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <>
+      <Stack.Screen
+        options={{
+          title: 'Add Exercise',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => router.back()}
+              style={styles.backButton}
+            >
+              <FontAwesome5 name="chevron-left" size={16} color="#007AFF" />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+          )
+        }}
+      />
+      <View style={styles.container}>
       <TextInput
         style={styles.searchInput}
         placeholder="Search exercises..."
@@ -183,10 +219,22 @@ export default function AddExerciseScreen() {
         </View>
       )}
     </View>
+    </>
   )
 }
 
 const styles = StyleSheet.create({
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  backText: {
+    color: '#007AFF',
+    fontSize: 17,
+    marginLeft: 5,
+  },
 
   container: {
     flex: 1,

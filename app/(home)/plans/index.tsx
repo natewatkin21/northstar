@@ -10,7 +10,7 @@
  * 3. View/edit existing plans
  * 
  * Data Management:
- * - Plans are sorted by creation date (newest first)
+ * - Plans are sorted by creation date (oldest first)
  * - List refreshes when screen gains focus
  * - Each plan shows:
  *   - Plan name
@@ -25,7 +25,7 @@
 
 import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native'
 import React from 'react'
-import { useRouter } from 'expo-router'
+import { useRouter, Stack } from 'expo-router'
 import { FontAwesome5 } from '@expo/vector-icons'
 import { createSupabaseClient } from '../../../src/lib/supabase'
 import { useUser, useAuth } from '@clerk/clerk-expo'
@@ -35,6 +35,7 @@ type WorkoutPlan = {
   id: string
   name: string
   created_at: string
+  is_current: boolean
 }
 
 export default function PlansScreen() {
@@ -54,7 +55,7 @@ export default function PlansScreen() {
       const { data, error } = await supabase
         .from('workout_plans')
         .select('*')
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: true })
 
       if (error) throw error
       setPlans(data || [])
@@ -77,7 +78,14 @@ export default function PlansScreen() {
       onPress={() => router.push(`/plans/view/${item.id}`)}
     >
       <View style={styles.planInfo}>
-        <Text style={styles.planName}>{item.name}</Text>
+        <View style={styles.nameContainer}>
+          <Text style={styles.planName}>{item.name}</Text>
+          {item.is_current && (
+            <View style={styles.currentTag}>
+              <Text style={styles.currentTagText}>Current Plan</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.planDate}>
           Created {new Date(item.created_at).toLocaleDateString()}
         </Text>
@@ -88,6 +96,29 @@ export default function PlansScreen() {
 
   return (
     <View style={styles.container}>
+      <Stack.Screen 
+        options={{
+          title: 'My Plans',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => router.push('/menu')}
+              style={styles.backButton}
+            >
+              <FontAwesome5 name="chevron-left" size={16} color="#007AFF" />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+          ),
+          headerRight: () => (
+            <TouchableOpacity 
+              onPress={() => router.push('/plans/new')}
+              style={styles.headerButton}
+            >
+              <Text style={styles.headerButtonText}>Create New</Text>
+            </TouchableOpacity>
+          )
+        }}
+      />
+
       <FlatList
         data={plans}
         renderItem={renderPlan}
@@ -107,8 +138,48 @@ export default function PlansScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerButton: {
-    marginRight: 16,
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  currentTag: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  currentTagText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingBottom: 10,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+    marginRight: 40,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    marginLeft: 8,
+  },
+  backText: {
+    color: '#007AFF',
+    marginLeft: 4,
+    fontSize: 17,
   },
   headerButtonText: {
     color: '#0891b2',
