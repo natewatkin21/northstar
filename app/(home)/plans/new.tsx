@@ -1,51 +1,53 @@
 /**
  * New Plan Screen
  * 
- * Allows users to create a new workout plan with multiple days and exercises.
+ * Entry point for creating a new workout plan. This screen handles the initial
+ * plan creation before transitioning to the week configuration flow.
  * 
  * Plan Creation Flow:
  * 1. Enter plan name
- * 2. Add days with custom names
- * 3. Add exercises to each day with:
- *    - Exercise name (selected from list)
- *    - Sets (> 0)
- *    - Reps (> 0)
- *    - Rest time in seconds (>= 0)
+ * 2. Create plan in Supabase
+ * 3. Navigate to first week configuration
  * 
- * Data Structure:
- * - Each day has a numeric order (0-based)
- * - Exercises within a day are ordered by created_at
- * - All exercises for a day share the same day_name
+ * Features:
+ * 1. Form Management
+ *    - Validates plan name
+ *    - Preserves input state
+ *    - Handles submission
  * 
- * Validation:
- * 1. Plan name is required
- * 2. Each day must have a name
- * 3. Exercise details must be valid numbers
+ * 2. State Persistence
+ *    - Saves form state in AsyncStorage
+ *    - Clears state after successful creation
+ *    - Restores state on re-mount
+ * 
+ * 3. Navigation
+ *    - Success: Routes to week configuration
+ *    - Failure: Stays on form with error
+ *    - Back: Returns to plans list
+ * 
+ * 4. Error Handling
+ *    - Validates required fields
+ *    - Shows user-friendly errors
+ *    - Handles network failures
  * 
  * After Creation:
- * - Redirects to plan list
- * - New plan appears at top of list
+ * - Creates empty plan in Supabase
+ * - Redirects to /plans/new/week/1
+ * - Preserves plan context for week setup
  */
 
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native'
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native'
 import React from 'react'
-import { useRouter, useLocalSearchParams, useFocusEffect, Stack } from 'expo-router'
+import { useRouter, useLocalSearchParams, Stack } from 'expo-router'
 import { createSupabaseClient } from '../../../src/lib/supabase'
 import { useAuth, useUser } from '@clerk/clerk-expo'
 import { FontAwesome5 } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { WeekFormData } from '../../../src/types/workout'
 
-type Exercise = {
-  id: string
+interface PlanFormData {
   name: string
-}
-
-type DayExercise = {
-  exercise: Exercise
-  sets: number
-  reps: number
-  rest_seconds: number
-  created_at?: string // Optional since existing exercises might not have it
+  weekData: { [weekNumber: number]: WeekFormData }
 }
 
 export default function NewPlanScreen() {
@@ -55,8 +57,7 @@ export default function NewPlanScreen() {
   const params = useLocalSearchParams()
   const [name, setName] = React.useState('')
   const [saving, setSaving] = React.useState(false)
-  const [dayExercises, setDayExercises] = React.useState<{ [key: number]: DayExercise[] }>({})
-  const [dayNames, setDayNames] = React.useState<{ [key: number]: string }>({})
+
 
   // Load saved form data on mount
   React.useEffect(() => {
@@ -64,10 +65,8 @@ export default function NewPlanScreen() {
       try {
         const savedData = await AsyncStorage.getItem('newPlanFormData')
         if (savedData) {
-          const { name: savedName, dayExercises: savedExercises, dayNames: savedNames } = JSON.parse(savedData)
+          const { name: savedName } = JSON.parse(savedData)
           setName(savedName || '')
-          setDayExercises(savedExercises || {})
-          setDayNames(savedNames || {})
         }
       } catch (error) {
         console.error('Error loading saved form data:', error)
@@ -81,8 +80,6 @@ export default function NewPlanScreen() {
     try {
       await AsyncStorage.removeItem('newPlanFormData')
       setName('')
-      setDayNames({})
-      setDayExercises({})
     } catch (error) {
       console.error('Error clearing form data:', error)
     }
@@ -92,77 +89,19 @@ export default function NewPlanScreen() {
   React.useEffect(() => {
     const saveFormData = async () => {
       try {
-        if (name || Object.keys(dayExercises).length > 0 || Object.keys(dayNames).length > 0) {
-          await AsyncStorage.setItem('newPlanFormData', JSON.stringify({
-            name,
-            dayExercises,
-            dayNames
-          }))
+        if (name) {
+          await AsyncStorage.setItem('newPlanFormData', JSON.stringify({ name }))
         }
       } catch (error) {
         console.error('Error saving form data:', error)
       }
     }
     saveFormData()
-  }, [name, dayExercises, dayNames])
+  }, [name])
 
-  // Check for pending exercise on focus
-  useFocusEffect(
-    React.useCallback(() => {
-    const checkPendingExercise = async () => {
-      try {
-        const pendingData = await AsyncStorage.getItem('pendingExercise')
-        if (pendingData) {
-          const exercise = JSON.parse(pendingData)
-          console.log('Found pending exercise:', exercise)
-          
-          setDayExercises(prev => {
-            const newExercises = {
-              ...prev,
-              [exercise.day]: [
-                ...(prev[exercise.day] || []),
-                {
-                  exercise: {
-                    id: exercise.exerciseId,
-                    name: exercise.exerciseName
-                  },
-                  sets: exercise.sets,
-                  reps: exercise.reps,
-                  rest_seconds: exercise.restSeconds
-                }
-              ]
-            }
-            return newExercises
-          })
-          
-          // Clear the pending exercise
-          await AsyncStorage.removeItem('pendingExercise')
-        }
-      } catch (error) {
-        console.error('Error checking pending exercise:', error)
-      }
-    }
-    
-    checkPendingExercise()
-  }, []))
 
-  // Load saved form data on mount
-  React.useEffect(() => {
-    const loadSavedData = async () => {
-      try {
-        const savedData = await AsyncStorage.getItem('newPlanFormData')
-        if (savedData) {
-          const { name: savedName, dayExercises: savedExercises, dayNames: savedNames } = JSON.parse(savedData)
-          setName(savedName || '')
-          setDayExercises(savedExercises || {})
-          setDayNames(savedNames || {})
-        }
-      } catch (error) {
-        console.error('Error loading saved form data:', error)
-      }
-    }
-    loadSavedData()
-  }, [])
+
+
 
   const handleBack = async () => {
     await clearFormData()
@@ -175,17 +114,7 @@ export default function NewPlanScreen() {
       return
     }
 
-    // Check if all days with exercises have names
-    const daysWithExercises = Object.keys(dayExercises)
-    const missingDayNames = daysWithExercises.filter(day => {
-      const dayIndex = parseInt(day)
-      return dayExercises[dayIndex]?.length > 0 && !dayNames[dayIndex]?.trim()
-    })
 
-    if (missingDayNames.length > 0) {
-      Alert.alert('Error', 'Please enter names for all days that have exercises')
-      return
-    }
 
     try {
       setSaving(true)
@@ -213,74 +142,14 @@ export default function NewPlanScreen() {
 
       if (planError) throw planError
 
-      console.log('Creating plan with days:', dayNames)
-      console.log('Creating plan with exercises:', dayExercises)
-      
-      // Prepare all inserts
-      const inserts = []
-      
-      // First, add any days that have names but no exercises
-      for (const [day, name] of Object.entries(dayNames)) {
-        const dayIndex = parseInt(day)
-        const trimmedName = name?.trim()
-        if (trimmedName && !dayExercises[day]?.length) {
-          console.log(`Adding day without exercises: ${trimmedName}`)
-          inserts.push({
-            plan_id: plan.id,
-            day_name: trimmedName,
-            day_order: dayIndex
-          })
-        }
-      }
 
-      // Then add exercises for days that have them
-      for (const [day, exercises] of Object.entries(dayExercises)) {
-        const dayIndex = parseInt(day)
-        const dayName = dayNames[day]?.trim()
-        if (!dayName) {
-          console.log(`Skipping exercises for day ${day} - no day name`)
-          continue
-        }
 
-        console.log(`Adding ${exercises.length} exercises for day ${dayName}`)
-        exercises.forEach(exercise => {
-          inserts.push({
-            plan_id: plan.id,
-            exercise_id: exercise.exercise.id,
-            day_name: dayName,
-            sets: exercise.sets,
-            reps: exercise.reps,
-            rest_seconds: exercise.rest_seconds,
-            day_order: dayIndex
-          })
-        })
-      }
 
-      // Insert all records at once
-      console.log('Inserting all plan day exercises:', inserts)
-      const { data, error } = await supabase
-        .from('plan_day_exercises')
-        .insert(inserts)
-        .select()
-        .order('day_order', { ascending: true })
-        .order('created_at', { ascending: true })
-      
-      if (error) {
-        console.error('Error inserting plan day exercises:', error)
-        throw error
-      }
-      console.log('Successfully inserted all plan day exercises:', data)
+      // Clear form data since we're done with it
+      await clearFormData()
 
-      // All operations completed successfully
-
-      // Clear saved form data and reset state
-      await AsyncStorage.removeItem('newPlanFormData')
-      setName('')
-      setDayExercises({})
-      setDayNames({})
-      setSaving(false)
-
-      router.replace(`/plans/view/${plan.id}`)
+      // Navigate to plan edit mode
+      router.replace(`/plans/view/${plan.id}?mode=edit`)
     } catch (error) {
       console.error('Error creating plan:', error)
       Alert.alert('Error', 'Failed to create workout plan')
@@ -305,7 +174,8 @@ export default function NewPlanScreen() {
           )
         }}
       />
-      <TextInput
+      <View style={styles.formContainer}>
+        <TextInput
           style={styles.nameInput}
           placeholder="Plan Name"
           value={name}
@@ -313,52 +183,51 @@ export default function NewPlanScreen() {
           autoCapitalize="words"
         />
 
-        <ScrollView style={styles.content}>
-          {[0,1,2,3,4,5,6].map((index) => (
-            <View key={index} style={styles.daySection}>
-              <View style={styles.dayHeader}>
-                <TextInput
-                  style={styles.dayNameInput}
-                  placeholder="Day Name (e.g., Arms)"
-                  value={dayNames[index] || ''}
-                  onChangeText={(text) => setDayNames(prev => ({ ...prev, [index]: text }))}
-                  autoCapitalize="words"
-                />
-                <TouchableOpacity
-                  onPress={() => {
-                    router.push({
-                      pathname: '/plans/new/add-exercise',
-                      params: { day: index }
-                    })
-                  }}
-                >
-                  <FontAwesome5 name="plus" size={20} color="#0891b2" />
-                </TouchableOpacity>
-              </View>
-              {dayExercises[index]?.map((exercise, exerciseIndex) => (
-                <View key={exerciseIndex} style={styles.exerciseItem}>
-                  <Text style={styles.exerciseName}>{exercise.exercise.name}</Text>
-                  <Text style={styles.exerciseDetails}>
-                    {exercise.sets} sets × {exercise.reps} reps ({exercise.rest_seconds}s rest)
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ))}
-        </ScrollView>
-
         <TouchableOpacity
-          style={[styles.saveButton, saving && styles.buttonDisabled]}
+          style={[styles.createButton, saving && styles.buttonDisabled]}
           onPress={handleSavePlan}
           disabled={saving}
         >
-          <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save Plan'}</Text>
+          <Text style={styles.createButtonText}>{saving ? 'Creating Plan...' : 'Create Plan'}</Text>
         </TouchableOpacity>
+      </View>
+
       </View>
   )
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  formContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  nameInput: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 16,
+    fontSize: 18,
+    marginBottom: 24,
+  },
+  createButton: {
+    backgroundColor: '#0891b2',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  createButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',

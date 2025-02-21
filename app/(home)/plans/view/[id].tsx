@@ -1,23 +1,36 @@
 /**
  * Plan Overview Screen
  * 
- * Displays and manages a workout plan's days and exercises.
+ * Displays and manages a workout plan's weeks and exercises. Supports both view and edit modes.
  * 
  * Key Features:
  * 1. Plan Management
- *    - View exercises organized by day
+ *    - View/edit weeks and their exercises
  *    - Set/unset as current plan
- *    - Edit plan via top-right button
+ *    - Toggle edit mode via top-right button
  * 
- * 2. Day Navigation
- *    - Days ordered by day_order
- *    - Click day card to view exercises
- *    - Routes to /plans/view/[id]/[day]
+ * 2. Week Management
+ *    - Weeks ordered by week_number
+ *    - Add new weeks in edit mode
+ *    - Navigate to week details
+ *    - Support for days without exercises
  * 
- * 3. Data Handling
+ * 3. Navigation Modes
+ *    - View Mode: /plans/view/week/[number]
+ *    - Edit Mode: /plans/new/week/[number]?mode=edit
+ *    - Add Week: /plans/new/week/[number]
+ * 
+ * 4. State Management
+ *    - Edit mode preserved in URL (?mode=edit)
  *    - Auto-refresh on screen focus
- *    - Loading state in header
+ *    - Loading states in header
  *    - Consistent back navigation
+ * 
+ * 5. Data Structure
+ *    - Weeks contain multiple days
+ *    - Days can exist without exercises
+ *    - Exercise configurations per day
+ *    - Week numbers are 1-based
  */
 
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native'
@@ -35,11 +48,13 @@ type WorkoutPlan = {
   is_current: boolean
 }
 
-type Day = {
-  day_name: string
-  day_order: number
-  exercise_count: number
-  is_current?: boolean
+type Week = {
+  week_number: number
+  days: {
+    day_name: string
+    day_order: number
+    exercise_count: number
+  }[]
 }
 
 export default function ViewPlanScreen() {
@@ -48,8 +63,9 @@ export default function ViewPlanScreen() {
   const router = useRouter()
   const params = useLocalSearchParams()
   const id = typeof params.id === 'string' ? params.id : undefined
+  const isEditMode = params.mode === 'edit'
   const [plan, setPlan] = React.useState<WorkoutPlan | null>(null)
-  const [days, setDays] = React.useState<Day[]>([])
+  const [weeks, setWeeks] = React.useState<Week[]>([])
   const [loading, setLoading] = React.useState(true)
 
   // If no valid ID is provided, go back to plans list
@@ -90,62 +106,63 @@ export default function ViewPlanScreen() {
       }
       setPlan(planData)
 
-      // Fetch all days including rest days (with undefined exercises)
+      // Fetch all days and exercises
+      console.log('Fetching days and exercises...')
       const { data: daysData, error: daysError } = await supabase
         .from('plan_day_exercises')
-        .select('day_name, day_order, exercise_id, is_current')
+        .select('*')
         .eq('plan_id', id)
+        .order('week_number', { ascending: true })
         .order('day_order', { ascending: true })
+      
+      console.log('Days data:', daysData)
 
       if (daysError) throw daysError
 
-      // Group by day_name and count only non-undefined exercises
-      const dayMap = daysData.reduce((acc, curr) => {
-        if (!curr.day_name) return acc
-        
-        // Initialize the day if it doesn't exist
-        if (!acc[curr.day_name]) {
-          acc[curr.day_name] = {
-            day_name: curr.day_name,
-            day_order: curr.day_order,
-            exercise_count: 0,  // Start at 0, increment only for real exercises
-            is_current: curr.is_current || false
+      // Group by week number and count exercises
+      console.log('Grouping by week number...')
+      const weekMap = new Map<number, Week>()
+      
+      if (daysData) {
+        // First pass: Create entries for each week and day
+        daysData.forEach(day => {
+          console.log('Processing day:', day)
+          const weekNumber = day.week_number || 1
+          if (!weekMap.has(weekNumber)) {
+            weekMap.set(weekNumber, {
+              week_number: weekNumber,
+              days: []
+            })
           }
-        }
-        
-        // Only increment count for non-undefined exercises
-        if (curr.exercise_id !== null) {
-          acc[curr.day_name].exercise_count++
-        }
-        
-        return acc
-      }, {} as Record<string, Day>)
-
-      // Only set current day if this is the current plan
-      if (planData.is_current) {
-        const hasCurrentDay = Object.values(dayMap).some(day => day.is_current)
-        if (!hasCurrentDay) {
-          const sortedDays = Object.values(dayMap).sort((a, b) => a.day_order - b.day_order)
-          if (sortedDays.length > 0) {
-            // Update the database to mark first day as current
-            const firstDay = sortedDays[0]
-            await supabase
-              .from('plan_day_exercises')
-              .update({ is_current: true })
-              .eq('plan_id', id)
-              .eq('day_name', firstDay.day_name)
-
-            dayMap[firstDay.day_name].is_current = true
+          
+          const week = weekMap.get(weekNumber)!
+          const existingDay = week.days.find(d => d.day_name === day.day_name && d.day_order === day.day_order)
+          
+          if (!existingDay && day.day_name) {
+            week.days.push({
+              day_name: day.day_name,
+              day_order: day.day_order,
+              exercise_count: 0
+            })
           }
-        }
-      } else {
-        // If not current plan, ensure no days are marked as current
-        Object.values(dayMap).forEach(day => {
-          day.is_current = false
+        })
+
+        // Second pass: Count exercises for each day
+        daysData.forEach(day => {
+          if (day.exercise_id) {
+            const week = weekMap.get(day.week_number || 1)!
+            const existingDay = week.days.find(d => d.day_name === day.day_name && d.day_order === day.day_order)
+            if (existingDay) {
+              existingDay.exercise_count++
+            }
+          }
         })
       }
+      
+      const weeksArray = Array.from(weekMap.values())
+      console.log('Final weeks array:', weeksArray)
 
-      setDays(Object.values(dayMap))
+      setWeeks(Array.from(weekMap.values()))
 
     } catch (error) {
       console.error('Error fetching plan details:', error)
@@ -279,55 +296,76 @@ export default function ViewPlanScreen() {
               <Text style={styles.backText}>Back</Text>
             </TouchableOpacity>
           ),
-          headerRight: () => (
+          headerRight: () => !isEditMode ? (
             <TouchableOpacity 
-              onPress={() => router.push(`/plans/${id}?name=${encodeURIComponent(plan?.name || '')}`)}
+              onPress={() => router.replace(`/plans/view/${id}?mode=edit`)}
               style={styles.headerButton}
             >
               <FontAwesome5 name="edit" size={20} color="#007AFF" />
             </TouchableOpacity>
-          )
+          ) : null
         }}
       />
     <View style={styles.container}>
       <ScrollView style={styles.scrollView}>
         {loading ? (
-          <Text style={styles.loadingText}>Loading days...</Text>
-        ) : days.length === 0 ? (
-          <Text style={styles.emptyText}>No days added yet</Text>
-        ) : (
-          days.map((day) => (
-            <TouchableOpacity
-              key={day.day_name}
-              style={[styles.dayCard, day.is_current && styles.currentDayCard]}
-              onPress={() => router.push(`/plans/view/${id}/${encodeURIComponent(day.day_name)}`)}
+          <Text style={styles.loadingText}>Loading plan...</Text>
+        ) : weeks.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>No weeks added yet</Text>
+            <TouchableOpacity 
+              style={styles.addButton}
+              onPress={() => router.push(`/plans/new/week/1?planId=${id}&planName=${plan?.name}`)}
             >
-              <View style={styles.dayCardContent}>
-                <View style={styles.dayNameContainer}>
-                  <Text style={[styles.dayName, day.is_current && styles.currentDayText]}>{day.day_name}</Text>
-                  {day.is_current && (
-                    <View style={styles.currentTag}>
-                      <Text style={styles.currentTagText}>Current Day</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={[styles.exerciseCount, day.is_current && styles.currentDayText]}>
-                  {day.exercise_count} exercise{day.exercise_count !== 1 ? 's' : ''}
-                </Text>
-              </View>
-              <FontAwesome5 name="chevron-right" size={16} color={day.is_current ? '#fff' : '#999'} />
+              <Text style={styles.addButtonText}>Add Week 1</Text>
             </TouchableOpacity>
-          ))
+          </View>
+        ) : (
+          <>
+            {weeks.map((week) => (
+              <View key={week.week_number} style={styles.weekContainer}>
+                <TouchableOpacity
+                  style={styles.weekHeader}
+                  onPress={() => {
+                    if (isEditMode) {
+                      // In edit mode, go to edit week screen
+                      router.push(`/plans/new/week/${week.week_number}?planId=${id}&planName=${plan?.name}&mode=edit`)
+                    } else {
+                      // In view mode, go to view week screen
+                      router.push(`/plans/view/week/${week.week_number}?planId=${id}`)
+                    }
+                  }}
+                >
+                  <Text style={styles.weekTitle}>Week {week.week_number}</Text>
+                  <FontAwesome5 name="chevron-right" size={16} color="#9ca3af" />
+                </TouchableOpacity>
+              </View>
+            ))}
+            {isEditMode && (
+              <TouchableOpacity 
+                style={styles.addButton}
+                onPress={() => router.push(`/plans/new/week/${weeks.length + 1}?planId=${id}&planName=${plan?.name}`)}
+              >
+                <Text style={styles.addButtonText}>Add Week {weeks.length + 1}</Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </ScrollView>
       <View style={styles.bottomContainer}>
         {!loading && plan && (
           <TouchableOpacity
-            style={[styles.actionButton, plan.is_current && styles.currentActionButton]}
-            onPress={plan.is_current ? () => router.push('/') : handleChangePlan}
+            style={[styles.actionButton, !isEditMode && plan.is_current && styles.currentActionButton]}
+            onPress={isEditMode ? 
+              () => {
+                // Exit edit mode and go to view mode
+                router.replace(`/plans/view/${id}`)
+              } : 
+              plan.is_current ? () => router.push('/') : handleChangePlan
+            }
           >
-            <Text style={styles.actionButtonText}>
-              {plan.is_current ? 'Go' : 'Change to this plan'}
+            <Text style={[styles.actionButtonText, !isEditMode && plan.is_current && styles.currentButtonText]}>
+              {isEditMode ? 'Save Plan' : plan.is_current ? 'Go' : 'Change to this plan'}
             </Text>
           </TouchableOpacity>
         )}
@@ -338,6 +376,94 @@ export default function ViewPlanScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  scrollView: {
+    flex: 1,
+    padding: 16,
+  },
+  weekContainer: {
+    marginBottom: 24,
+  },
+  weekHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  weekTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  dayCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginBottom: 8,
+    marginLeft: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 2,
+  },
+  dayHeader: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dayName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  exerciseCount: {
+    fontSize: 14,
+    color: '#666',
+  },
+  loadingText: {
+    textAlign: 'center',
+    marginTop: 24,
+    fontSize: 16,
+    color: '#666',
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+  },
+  emptyText: {
+    textAlign: 'center',
+    marginBottom: 16,
+    fontSize: 16,
+    color: '#666',
+  },
+  addButton: {
+    backgroundColor: '#0891b2',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  addButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   headerButton: {
     marginRight: 8,
     padding: 8,

@@ -1,3 +1,38 @@
+/**
+ * Add Exercise Screen
+ * 
+ * This screen allows users to add exercises to specific days within a week.
+ * It supports both creating new weeks and editing existing ones.
+ * 
+ * Features:
+ * 1. Exercise Selection
+ *    - Search exercises by name
+ *    - Real-time search results
+ *    - Exercise configuration (sets, reps, rest)
+ * 
+ * 2. State Management
+ *    - Temporary state in AsyncStorage
+ *    - Preserves edit mode across navigation
+ *    - Maintains week and day context
+ * 
+ * 3. Navigation
+ *    - Returns to week configuration
+ *    - Preserves edit mode in URL
+ *    - Maintains week number context
+ * 
+ * 4. Data Flow
+ *    - Reads exercises from Supabase
+ *    - Stores configurations in AsyncStorage
+ *    - Updates parent week state on save
+ * 
+ * URL Parameters:
+ * - planId: ID of the current plan
+ * - weekNumber: Current week number
+ * - day: Day number (1-7)
+ * - dayName: Name of the day
+ * - mode: edit (optional)
+ */
+
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native'
 import React from 'react'
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router'
@@ -15,7 +50,11 @@ export default function AddExerciseScreen() {
   const { getToken } = useAuth()
   const router = useRouter()
   const params = useLocalSearchParams()
+  const planId = typeof params.planId === 'string' ? params.planId : undefined
+  const weekNumber = typeof params.weekNumber === 'string' ? parseInt(params.weekNumber) : undefined
   const day = typeof params.day === 'string' || typeof params.day === 'number' ? Number(params.day) : undefined
+  const dayName = typeof params.dayName === 'string' ? decodeURIComponent(params.dayName) : `Day ${day}`
+  const isEditMode = params.mode === 'edit'
   const [searchQuery, setSearchQuery] = React.useState('')
   const [exercises, setExercises] = React.useState<Exercise[]>([])
   const [selectedExercise, setSelectedExercise] = React.useState<Exercise | null>(null)
@@ -23,12 +62,12 @@ export default function AddExerciseScreen() {
   const [reps, setReps] = React.useState('')
   const [restSeconds, setRestSeconds] = React.useState('')
 
-  // If no valid day is provided, go back
+  // If no valid params are provided, go back
   React.useEffect(() => {
-    if (day === undefined || isNaN(day)) {
+    if (!planId || !weekNumber || day === undefined || isNaN(day)) {
       router.back()
     }
-  }, [day, router])
+  }, [planId, weekNumber, day, router])
 
   // Search exercises when query changes
   React.useEffect(() => {
@@ -82,19 +121,43 @@ export default function AddExerciseScreen() {
       return
     }
 
-    // Save exercise data to AsyncStorage and return to previous screen
-    const exerciseData = {
-      exerciseId: selectedExercise.id,
-      exerciseName: selectedExercise.name,
-      day: day,
-      sets: setsNum,
-      reps: repsNum,
-      restSeconds: restNum
-    }
-    
     try {
-      await AsyncStorage.setItem('pendingExercise', JSON.stringify(exerciseData))
-      router.replace('/plans/new')
+      const token = await getToken({ template: 'supabase' })
+      const supabase = createSupabaseClient(token || undefined)
+
+      // Load existing exercises
+      const storageKey = `plan_${planId}_week${weekNumber}Exercises`
+      const savedExercisesStr = await AsyncStorage.getItem(storageKey)
+      const savedExercises = savedExercisesStr ? JSON.parse(savedExercisesStr) : {}
+      
+      // Add new exercise
+      const updatedExercises = {
+        ...savedExercises,
+        [day]: [
+          ...(savedExercises[day] || []),
+          {
+            id: selectedExercise.id,
+            name: selectedExercise.name,
+            sets: setsNum,
+            reps: repsNum,
+            rest_seconds: restNum
+          }
+        ]
+      }
+
+      console.log('Saving exercise to week:', {
+        key: storageKey,
+        data: updatedExercises
+      })
+
+      // Save updated exercises
+      await AsyncStorage.setItem(
+        storageKey,
+        JSON.stringify(updatedExercises)
+      )
+
+      // Navigate back to week view, preserving the current mode
+      router.replace(`/plans/new/week/${weekNumber}?planId=${planId}${isEditMode ? '&mode=edit' : ''}`)
     } catch (error) {
       console.error('Error saving exercise data:', error)
       Alert.alert('Error', 'Failed to save exercise data')
